@@ -41,7 +41,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_get_returns_all_rows(): void
     {
-        $rows = $this->db->table('users')->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->get();
 
         $this->assertCount(3, $rows);
     }
@@ -51,7 +51,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_where_filters_rows(): void
     {
-        $rows = $this->db->table('users')->where('active', 1)->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->where('active', 1)->get();
 
         $this->assertCount(2, $rows);
     }
@@ -61,7 +61,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_where_with_operator(): void
     {
-        $rows = $this->db->table('users')->where('id', '>', 1)->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->where('id', '>', 1)->get();
 
         $this->assertCount(2, $rows);
     }
@@ -71,7 +71,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_multiple_wheres_are_combined_with_and(): void
     {
-        $rows = $this->db->table('users')->where('active', 1)->where('name', 'Alice')->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->where('active', 1)->where('name', 'Alice')->get();
 
         $this->assertCount(1, $rows);
         $this->assertSame('Alice', $rows[0]['name']);
@@ -82,7 +82,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_select_limits_columns(): void
     {
-        $rows = $this->db->table('users')->select('name')->where('name', 'Alice')->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->select('name')->where('name', 'Alice')->get();
 
         $this->assertSame(['name' => 'Alice'], $rows[0]);
     }
@@ -92,7 +92,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_select_with_no_args_returns_all_columns(): void
     {
-        $rows = $this->db->table('users')->select()->where('name', 'Alice')->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->select()->where('name', 'Alice')->get();
 
         $this->assertArrayHasKey('id', $rows[0]);
         $this->assertArrayHasKey('name', $rows[0]);
@@ -104,7 +104,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_order_by_asc(): void
     {
-        $rows = $this->db->table('users')->orderBy('name')->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->orderBy('name')->get();
 
         $this->assertSame('Alice', $rows[0]['name']);
         $this->assertSame('Bob', $rows[1]['name']);
@@ -116,7 +116,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_order_by_desc(): void
     {
-        $rows = $this->db->table('users')->orderBy('name', 'desc')->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->orderBy('name', 'desc')->get();
 
         $this->assertSame('Charlie', $rows[0]['name']);
     }
@@ -126,7 +126,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_limit_restricts_result_count(): void
     {
-        $rows = $this->db->table('users')->limit(2)->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->limit(2)->get();
 
         $this->assertCount(2, $rows);
     }
@@ -136,7 +136,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_offset_skips_rows(): void
     {
-        $rows = $this->db->table('users')->orderBy('id')->offset(2)->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->orderBy('id')->offset(2)->get();
 
         $this->assertCount(1, $rows);
         $this->assertSame('Charlie', $rows[0]['name']);
@@ -147,7 +147,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_first_returns_single_row(): void
     {
-        $row = $this->db->table('users')->orderBy('name')->first();
+        $row = (new QueryBuilder($this->db, 'users'))->orderBy('name')->first();
 
         $this->assertNotNull($row);
         $this->assertSame('Alice', $row['name']);
@@ -158,7 +158,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_first_returns_null_when_no_rows(): void
     {
-        $row = $this->db->table('users')->where('name', 'Nobody')->first();
+        $row = (new QueryBuilder($this->db, 'users'))->where('name', 'Nobody')->first();
 
         $this->assertNull($row);
     }
@@ -168,7 +168,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_count_returns_total_row_count(): void
     {
-        $count = $this->db->table('users')->count();
+        $count = (new QueryBuilder($this->db, 'users'))->count();
 
         $this->assertSame(3, $count);
     }
@@ -178,7 +178,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_count_respects_where(): void
     {
-        $count = $this->db->table('users')->where('active', 1)->count();
+        $count = (new QueryBuilder($this->db, 'users'))->where('active', 1)->count();
 
         $this->assertSame(2, $count);
     }
@@ -188,10 +188,10 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_insert_adds_a_row(): void
     {
-        $result = $this->db->table('users')->insert(['name' => 'Dave', 'active' => 1]);
+        $result = (new QueryBuilder($this->db, 'users'))->insert(['name' => 'Dave', 'active' => 1]);
 
         $this->assertTrue($result);
-        $this->assertSame(4, $this->db->table('users')->count());
+        $this->assertSame(4, (new QueryBuilder($this->db, 'users'))->count());
     }
 
     /**
@@ -199,10 +199,10 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_update_modifies_matching_rows(): void
     {
-        $affected = $this->db->table('users')->where('name', 'Bob')->update(['active' => 1]);
+        $affected = (new QueryBuilder($this->db, 'users'))->where('name', 'Bob')->update(['active' => 1]);
 
         $this->assertSame(1, $affected);
-        $this->assertSame(3, $this->db->table('users')->where('active', 1)->count());
+        $this->assertSame(3, (new QueryBuilder($this->db, 'users'))->where('active', 1)->count());
     }
 
     /**
@@ -210,10 +210,10 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_delete_removes_matching_rows(): void
     {
-        $affected = $this->db->table('users')->where('active', 0)->delete();
+        $affected = (new QueryBuilder($this->db, 'users'))->where('active', 0)->delete();
 
         $this->assertSame(1, $affected);
-        $this->assertSame(2, $this->db->table('users')->count());
+        $this->assertSame(2, (new QueryBuilder($this->db, 'users'))->count());
     }
 
     /**
@@ -221,7 +221,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_builder_is_immutable(): void
     {
-        $base = $this->db->table('users');
+        $base = (new QueryBuilder($this->db, 'users'));
         $filtered = $base->where('active', 1);
 
         $this->assertSame(3, $base->count());
@@ -235,7 +235,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_or_where_returns_results_from_both_conditions(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->where('name', 'Alice')
             ->orWhere('name', 'Bob')
             ->get();
@@ -248,7 +248,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_or_where_with_operator(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->where('active', 0)
             ->orWhere('score', '>', 25.0)
             ->get();
@@ -264,7 +264,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_where_in_filters_by_included_values(): void
     {
-        $rows = $this->db->table('users')->whereIn('id', [1, 3])->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->whereIn('id', [1, 3])->get();
 
         $this->assertCount(2, $rows);
     }
@@ -274,7 +274,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_where_not_in_excludes_values(): void
     {
-        $rows = $this->db->table('users')->whereNotIn('id', [1])->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->whereNotIn('id', [1])->get();
 
         $this->assertCount(2, $rows);
     }
@@ -284,7 +284,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_where_in_combined_with_where(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->where('active', 1)
             ->whereIn('id', [1, 2, 3])
             ->get();
@@ -301,7 +301,7 @@ final class QueryBuilderTest extends TestCase
     public function test_where_null_finds_rows_with_null_column(): void
     {
         // All users have NULL email by default
-        $rows = $this->db->table('users')->whereNull('email')->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->whereNull('email')->get();
 
         $this->assertCount(3, $rows);
     }
@@ -311,8 +311,8 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_where_not_null_finds_rows_with_non_null_column(): void
     {
-        $this->db->table('users')->where('name', 'Alice')->update(['email' => 'alice@example.com']);
-        $rows = $this->db->table('users')->whereNotNull('email')->get();
+        (new QueryBuilder($this->db, 'users'))->where('name', 'Alice')->update(['email' => 'alice@example.com']);
+        $rows = (new QueryBuilder($this->db, 'users'))->whereNotNull('email')->get();
 
         $this->assertCount(1, $rows);
         $this->assertSame('Alice', $rows[0]['name']);
@@ -325,7 +325,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_join_combines_rows_from_two_tables(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->select('users.name', 'orders.amount')
             ->join('orders', 'users.id', '=', 'orders.user_id')
             ->orderBy('orders.amount')
@@ -342,7 +342,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_left_join_includes_rows_without_match(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->select('users.name', 'orders.amount')
             ->leftJoin('orders', 'users.id', '=', 'orders.user_id')
             ->get();
@@ -356,7 +356,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_join_with_where_filters_correctly(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->select('users.name', 'orders.amount')
             ->join('orders', 'users.id', '=', 'orders.user_id')
             ->where('orders.amount', '>', 60.0)
@@ -373,7 +373,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_group_by_groups_results(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->select('active')
             ->groupBy('active')
             ->orderBy('active')
@@ -387,7 +387,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_having_filters_groups(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->select('active', 'COUNT(*) as cnt')
             ->groupBy('active')
             ->having('COUNT(*)', '>', 1)
@@ -403,7 +403,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_group_by_multiple_columns(): void
     {
-        $rows = $this->db->table('users')
+        $rows = (new QueryBuilder($this->db, 'users'))
             ->select('active', 'name')
             ->groupBy('active', 'name')
             ->orderBy('name')
@@ -419,7 +419,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_sum_returns_total_of_column(): void
     {
-        $sum = $this->db->table('users')->sum('score');
+        $sum = (new QueryBuilder($this->db, 'users'))->sum('score');
 
         $this->assertSame(60.0, $sum);
     }
@@ -429,7 +429,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_sum_respects_where(): void
     {
-        $sum = $this->db->table('users')->where('active', 1)->sum('score');
+        $sum = (new QueryBuilder($this->db, 'users'))->where('active', 1)->sum('score');
 
         // Alice (10) + Charlie (30) = 40
         $this->assertSame(40.0, $sum);
@@ -440,7 +440,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_avg_returns_average_of_column(): void
     {
-        $avg = $this->db->table('users')->avg('score');
+        $avg = (new QueryBuilder($this->db, 'users'))->avg('score');
 
         $this->assertSame(20.0, $avg);
     }
@@ -450,7 +450,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_min_returns_minimum_of_column(): void
     {
-        $min = $this->db->table('users')->min('score');
+        $min = (new QueryBuilder($this->db, 'users'))->min('score');
 
         $this->assertSame(10.0, (float) $min);
     }
@@ -460,7 +460,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_max_returns_maximum_of_column(): void
     {
-        $max = $this->db->table('users')->max('score');
+        $max = (new QueryBuilder($this->db, 'users'))->max('score');
 
         $this->assertSame(30.0, (float) $max);
     }
@@ -470,7 +470,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_min_with_where_filter(): void
     {
-        $min = $this->db->table('users')->where('active', 0)->min('score');
+        $min = (new QueryBuilder($this->db, 'users'))->where('active', 0)->min('score');
 
         $this->assertSame(20.0, (float) $min);
     }

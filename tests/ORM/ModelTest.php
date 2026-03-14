@@ -440,7 +440,7 @@ final class ModelTest extends ModelTestCase
     {
         $user = new TestUser(['name' => 'Dave', 'active' => 1]);
         $this->assertTrue($user->save());
-        $this->assertSame(4, $this->db->table('users')->count());
+        $this->assertSame(4, (new QueryBuilder($this->db, 'users'))->count());
         $this->assertNotNull($user->getAttribute('id'));
     }
 
@@ -454,7 +454,7 @@ final class ModelTest extends ModelTestCase
         $user->setAttribute('active', 1);
         $this->assertTrue($user->save());
 
-        $row = $this->db->table('users')->where('id', 2)->first();
+        $row = (new QueryBuilder($this->db, 'users'))->where('id', 2)->first();
         $this->assertNotNull($row);
         $this->assertSame(1, $row['active']);
     }
@@ -469,7 +469,7 @@ final class ModelTest extends ModelTestCase
         $this->assertInstanceOf(TestUser::class, $user);
         $this->assertSame('Eve', $user->getAttribute('name'));
         $this->assertNotNull($user->getAttribute('id'));
-        $this->assertSame(4, $this->db->table('users')->count());
+        $this->assertSame(4, (new QueryBuilder($this->db, 'users'))->count());
     }
 
     /**
@@ -480,7 +480,7 @@ final class ModelTest extends ModelTestCase
         $user = TestUser::find(1);
         $this->assertNotNull($user);
         $this->assertTrue($user->delete());
-        $this->assertSame(2, $this->db->table('users')->count());
+        $this->assertSame(2, (new QueryBuilder($this->db, 'users'))->count());
     }
 
     /**
@@ -698,7 +698,7 @@ final class ModelTest extends ModelTestCase
         $user->setAttribute('active', 1);
         $user->save();
 
-        $row = $this->db->table('users')->where('id', 2)->first();
+        $row = (new QueryBuilder($this->db, 'users'))->where('id', 2)->first();
         $this->assertNotNull($row);
         $this->assertSame(1, $row['active']);
         $this->assertSame('Bob', $row['name']);
@@ -777,7 +777,7 @@ final class ModelTest extends ModelTestCase
     {
         $model = CastedModel::create(['active' => true, 'score' => 1.0, 'data' => ['foo' => 'bar']]);
 
-        $row = $this->db->table('casted')->where('id', $model->getAttribute('id'))->first();
+        $row = (new QueryBuilder($this->db, 'casted'))->where('id', $model->getAttribute('id'))->first();
         $this->assertNotNull($row);
         $this->assertSame('{"foo":"bar"}', $row['data']);
     }

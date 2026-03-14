@@ -302,7 +302,7 @@ abstract class Model
             return false;
         }
 
-        $affected = self::database()->table(static::resolveTable())
+        $affected = new QueryBuilder(self::database(), static::resolveTable())
             ->where($primaryKey, $id)
             ->delete();
 
@@ -323,7 +323,7 @@ abstract class Model
             return false;
         }
 
-        $affected = self::database()->table(static::resolveTable())
+        $affected = new QueryBuilder(self::database(), static::resolveTable())
             ->where($primaryKey, $id)
             ->update(['deleted_at' => null]);
 
@@ -400,7 +400,7 @@ abstract class Model
     public static function withTrashed(): ModelQueryBuilder
     {
         /** @var ModelQueryBuilder<static> */
-        return new ModelQueryBuilder(static::class, self::database()->table(static::resolveTable()));
+        return new ModelQueryBuilder(static::class, new QueryBuilder(self::database(), static::resolveTable()));
     }
 
     /**
@@ -411,7 +411,7 @@ abstract class Model
     public static function onlyTrashed(): ModelQueryBuilder
     {
         /** @var ModelQueryBuilder<static> */
-        $builder = new ModelQueryBuilder(static::class, self::database()->table(static::resolveTable()));
+        $builder = new ModelQueryBuilder(static::class, new QueryBuilder(self::database(), static::resolveTable()));
 
         return $builder->whereNotNull('deleted_at');
     }
@@ -487,7 +487,7 @@ abstract class Model
 
         if (static::$softDeletes) {
             $now = date('Y-m-d H:i:s');
-            $affected = self::database()->table(static::resolveTable())
+            $affected = new QueryBuilder(self::database(), static::resolveTable())
                 ->where($primaryKey, $id)
                 ->update(['deleted_at' => $now]);
 
@@ -501,7 +501,7 @@ abstract class Model
             return $affected > 0;
         }
 
-        $affected = self::database()->table(static::resolveTable())->where($primaryKey, $id)->delete();
+        $affected = new QueryBuilder(self::database(), static::resolveTable())->where($primaryKey, $id)->delete();
 
         $this->afterDelete();
 
@@ -676,7 +676,7 @@ abstract class Model
     protected static function newQuery(): ModelQueryBuilder
     {
         /** @var ModelQueryBuilder<static> */
-        $builder = new ModelQueryBuilder(static::class, self::database()->table(static::resolveTable()));
+        $builder = new ModelQueryBuilder(static::class, new QueryBuilder(self::database(), static::resolveTable()));
 
         if (static::$softDeletes) {
             return $builder->whereNull('deleted_at');
@@ -733,7 +733,7 @@ abstract class Model
 
         $this->beforeCreate();
 
-        $result = self::database()->table($table)->insert($this->prepareForStorage($data));
+        $result = new QueryBuilder(self::database(), $table)->insert($this->prepareForStorage($data));
 
         if ($result) {
             $lastId = self::database()->getPdo()->lastInsertId();
@@ -777,7 +777,7 @@ abstract class Model
 
         $this->beforeUpdate();
 
-        $affected = self::database()->table($table)
+        $affected = new QueryBuilder(self::database(), $table)
             ->where($primaryKey, $id)
             ->update($this->prepareForStorage($dirty));
 

@@ -9,11 +9,11 @@
       "email": "andreas.uretschnig@gmail.com"
     }
   ],
-  "keywords": ["orm", "query-builder", "schema-builder", "active-record", "database", "php", "framework", "ezphp"],
-  "homepage": "https://github.com/ezphp/orm",
+  "keywords": ["orm", "query-builder", "schema-builder", "active-record", "database", "php", "framework", "ez-php"],
+  "homepage": "https://github.com/ez-php/orm",
   "support": {
-    "issues": "https://github.com/ezphp/orm/issues",
-    "source": "https://github.com/ezphp/orm"
+    "issues": "https://github.com/ez-php/orm/issues",
+    "source": "https://github.com/ez-php/orm"
   },
   "require": {
     "php": "^8.5",

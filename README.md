@@ -1,19 +1,19 @@
-# ezphp/orm
+# ez-php/orm
 
-ORM module for the [ez-php framework](https://github.com/ezphp/framework) — Active Record style models with a fluent query builder and schema builder.
+ORM module for the [ez-php framework](https://github.com/ez-php/framework) — Active Record style models with a fluent query builder and schema builder.
 
-[![CI](https://github.com/ezphp/orm/actions/workflows/ci.yml/badge.svg)](https://github.com/ezphp/orm/actions/workflows/ci.yml)
+[![CI](https://github.com/ez-php/orm/actions/workflows/ci.yml/badge.svg)](https://github.com/ez-php/orm/actions/workflows/ci.yml)
 
 ## Requirements
 
 - PHP 8.5+
 - ext-pdo
-- ezphp/framework ^1.0
+- ez-php/framework ^1.0
 
 ## Installation
 
 ```bash
-composer require ezphp/orm
+composer require ez-php/orm
 ```
 
 ## Setup

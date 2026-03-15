@@ -409,4 +409,26 @@ final class SchemaTest extends TestCase
 
         $this->assertCount(1, $rows);
     }
+
+    // --- MySQL: INFORMATION_SCHEMA path ---
+
+    /**
+     * @return void
+     */
+    public function test_has_table_returns_false_for_missing_table_on_mysql(): void
+    {
+        $host = (string) getenv('DB_HOST');
+        $database = (string) (getenv('DB_TESTING_DATABASE') ?: 'ez-php_testing');
+        $username = (string) getenv('DB_USERNAME');
+        $password = (string) getenv('DB_PASSWORD');
+
+        if ($host === '') {
+            $this->markTestSkipped('MySQL not available — set DB_HOST to run this test.');
+        }
+
+        $mysqlDb = new Database("mysql:host=$host;dbname=$database;charset=utf8mb4", $username, $password);
+        $schema = new Schema($mysqlDb);
+
+        $this->assertFalse($schema->hasTable('ez_php_schema_test_nonexistent_' . uniqid()));
+    }
 }

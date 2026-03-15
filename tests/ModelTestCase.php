@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use EzPhp\Database\Database;
 use EzPhp\Orm\Model;
 
 /**
@@ -23,7 +22,7 @@ use EzPhp\Orm\Model;
  */
 abstract class ModelTestCase extends TestCase
 {
-    protected Database $db;
+    protected PdoDatabase $db;
 
     /**
      * @return void
@@ -32,7 +31,7 @@ abstract class ModelTestCase extends TestCase
     {
         parent::setUp();
 
-        $this->db = new Database('sqlite::memory:', '', '');
+        $this->db = new PdoDatabase('sqlite::memory:');
         Model::setDatabase($this->db);
 
         $this->setUpDatabase();

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use EzPhp\Database\Database;
 use EzPhp\Orm\QueryBuilder;
 use PHPUnit\Framework\Attributes\CoversClass;
 
@@ -16,14 +15,14 @@ use PHPUnit\Framework\Attributes\CoversClass;
 #[CoversClass(QueryBuilder::class)]
 final class QueryBuilderTest extends TestCase
 {
-    private Database $db;
+    private PdoDatabase $db;
 
     /**
      * @return void
      */
     protected function setUp(): void
     {
-        $this->db = new Database('sqlite::memory:', '', '');
+        $this->db = new PdoDatabase('sqlite::memory:');
         $this->db->query('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, score REAL DEFAULT NULL, email TEXT DEFAULT NULL)');
         $this->db->query("INSERT INTO users (name, active, score) VALUES ('Alice', 1, 10.0)");
         $this->db->query("INSERT INTO users (name, active, score) VALUES ('Bob', 0, 20.0)");

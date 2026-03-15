@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Schema;
 
-use EzPhp\Database\Database;
 use EzPhp\Orm\Schema\Blueprint;
 use EzPhp\Orm\Schema\ColumnDefinition;
 use EzPhp\Orm\Schema\ForeignKeyDefinition;
@@ -12,6 +11,7 @@ use EzPhp\Orm\Schema\Schema;
 use PDOException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
+use Tests\PdoDatabase;
 use Tests\TestCase;
 
 /**
@@ -25,7 +25,7 @@ use Tests\TestCase;
 #[UsesClass(ForeignKeyDefinition::class)]
 final class SchemaTest extends TestCase
 {
-    private Database $db;
+    private PdoDatabase $db;
 
     private Schema $schema;
 
@@ -34,7 +34,7 @@ final class SchemaTest extends TestCase
      */
     protected function setUp(): void
     {
-        $this->db = new Database('sqlite::memory:', '', '');
+        $this->db = new PdoDatabase('sqlite::memory:');
         $this->schema = new Schema($this->db);
     }
 
@@ -426,7 +426,7 @@ final class SchemaTest extends TestCase
             $this->markTestSkipped('MySQL not available — set DB_HOST to run this test.');
         }
 
-        $mysqlDb = new Database("mysql:host=$host;dbname=$database;charset=utf8mb4", $username, $password);
+        $mysqlDb = new PdoDatabase("mysql:host=$host;dbname=$database;charset=utf8mb4", $username, $password);
         $schema = new Schema($mysqlDb);
 
         $this->assertFalse($schema->hasTable('ez_php_schema_test_nonexistent_' . uniqid()));

@@ -5,33 +5,13 @@ declare(strict_types=1);
 namespace Tests\ORM;
 
 use EzPhp\Application\Application;
-use EzPhp\Application\CoreServiceProviders;
-use EzPhp\Config\Config;
-use EzPhp\Config\ConfigLoader;
-use EzPhp\Config\ConfigServiceProvider;
-use EzPhp\Console\Command\MakeMigrationCommand;
-use EzPhp\Console\Command\MigrateCommand;
-use EzPhp\Console\Command\MigrateRollbackCommand;
-use EzPhp\Console\Console;
-use EzPhp\Console\ConsoleServiceProvider;
-use EzPhp\Container\Container;
-use EzPhp\Database\Database;
-use EzPhp\Database\DatabaseServiceProvider;
 use EzPhp\Exceptions\ApplicationException;
 use EzPhp\Exceptions\ContainerException;
-use EzPhp\Exceptions\DefaultExceptionHandler;
-use EzPhp\Exceptions\ExceptionHandlerServiceProvider;
 use EzPhp\Exceptions\EzPhpException;
-use EzPhp\Migration\MigrationServiceProvider;
-use EzPhp\Migration\Migrator;
 use EzPhp\Orm\Model;
 use EzPhp\Orm\ModelQueryBuilder;
 use EzPhp\Orm\ModelServiceProvider;
 use EzPhp\Orm\QueryBuilder;
-use EzPhp\Routing\Route;
-use EzPhp\Routing\Router;
-use EzPhp\Routing\RouterServiceProvider;
-use EzPhp\ServiceProvider\ServiceProvider;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use Tests\DatabaseTestCase;
@@ -43,32 +23,9 @@ use Throwable;
  * @package Tests\Database\ORM
  */
 #[CoversClass(ModelServiceProvider::class)]
-#[UsesClass(Application::class)]
-#[UsesClass(CoreServiceProviders::class)]
-#[UsesClass(Container::class)]
-#[UsesClass(Config::class)]
-#[UsesClass(ConfigLoader::class)]
-#[UsesClass(ConfigServiceProvider::class)]
-#[UsesClass(Database::class)]
-#[UsesClass(DatabaseServiceProvider::class)]
 #[UsesClass(Model::class)]
 #[UsesClass(ModelQueryBuilder::class)]
-
 #[UsesClass(QueryBuilder::class)]
-#[UsesClass(DefaultExceptionHandler::class)]
-#[UsesClass(ExceptionHandlerServiceProvider::class)]
-#[UsesClass(MigrationServiceProvider::class)]
-#[UsesClass(Migrator::class)]
-#[UsesClass(Route::class)]
-#[UsesClass(Router::class)]
-#[UsesClass(RouterServiceProvider::class)]
-#[UsesClass(ServiceProvider::class)]
-#[UsesClass(ConsoleServiceProvider::class)]
-#[UsesClass(Console::class)]
-#[UsesClass(MigrateCommand::class)]
-#[UsesClass(MigrateRollbackCommand::class)]
-#[UsesClass(MakeMigrationCommand::class)]
-
 final class ModelServiceProviderTest extends DatabaseTestCase
 {
     /**

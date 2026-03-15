@@ -7,7 +7,6 @@ namespace Tests;
 use EzPhp\Database\Database;
 use EzPhp\Orm\QueryBuilder;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\UsesClass;
 
 /**
  * Class QueryBuilderTest
@@ -15,7 +14,6 @@ use PHPUnit\Framework\Attributes\UsesClass;
  * @package Tests\Database
  */
 #[CoversClass(QueryBuilder::class)]
-#[UsesClass(Database::class)]
 final class QueryBuilderTest extends TestCase
 {
     private Database $db;

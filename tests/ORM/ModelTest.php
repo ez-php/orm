@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\ORM;
 
-use EzPhp\Database\Database;
 use EzPhp\Exceptions\EzPhpException;
 use EzPhp\Orm\Model;
 use EzPhp\Orm\ModelQueryBuilder;
@@ -270,7 +269,6 @@ final class HookedModel extends Model
  */
 #[CoversClass(Model::class)]
 #[CoversClass(ModelQueryBuilder::class)]
-#[UsesClass(Database::class)]
 #[UsesClass(QueryBuilder::class)]
 #[UsesClass(Relation::class)]
 #[UsesClass(HasMany::class)]

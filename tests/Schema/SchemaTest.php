@@ -23,7 +23,6 @@ use Tests\TestCase;
 #[UsesClass(Blueprint::class)]
 #[UsesClass(ColumnDefinition::class)]
 #[UsesClass(ForeignKeyDefinition::class)]
-#[UsesClass(Database::class)]
 final class SchemaTest extends TestCase
 {
     private Database $db;

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace EzPhp\Orm\Schema;
 
 use Closure;
-use EzPhp\Database\Database;
+use EzPhp\Contracts\DatabaseInterface;
 use PDO;
 
 /**
@@ -20,9 +20,9 @@ final class Schema
     /**
      * Schema Constructor
      *
-     * @param Database $db
+     * @param DatabaseInterface $db
      */
-    public function __construct(private readonly Database $db)
+    public function __construct(private readonly DatabaseInterface $db)
     {
         /** @var string $driver */
         $driver = $db->getPdo()->getAttribute(PDO::ATTR_DRIVER_NAME);

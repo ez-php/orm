@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
-use EzPhp\Database\Database;
-use EzPhp\ServiceProvider\ServiceProvider;
+use EzPhp\Contracts\DatabaseInterface;
+use EzPhp\Contracts\ServiceProvider;
 use ReflectionException;
 
 /**
@@ -21,7 +21,7 @@ final class ModelServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $db = $this->app->make(Database::class);
+        $db = $this->app->make(DatabaseInterface::class);
         Model::setDatabase($db);
     }
 }

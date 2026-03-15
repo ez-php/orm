@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
-use EzPhp\Database\Database;
-use EzPhp\Exceptions\EzPhpException;
+use EzPhp\Contracts\DatabaseInterface;
+use EzPhp\Contracts\EzPhpException;
 use EzPhp\Orm\Relations\BelongsTo;
 use EzPhp\Orm\Relations\BelongsToMany;
 use EzPhp\Orm\Relations\HasMany;
@@ -26,7 +26,7 @@ abstract class Model
      * Allows separate DB connections for different model classes without relying on
      * PHP's unintuitive late-static-binding static property write behaviour.
      *
-     * @var array<class-string, Database>
+     * @var array<class-string, DatabaseInterface>
      */
     private static array $databases = [];
 
@@ -81,15 +81,15 @@ abstract class Model
     // -------------------------------------------------------------------------
 
     /**
-     * Register a Database instance for this model class.
+     * Register a DatabaseInterface instance for this model class.
      * When called as Model::setDatabase($db) it acts as the shared default for all models.
      * When called as User::setDatabase($db) it registers a connection specific to User.
      *
-     * @param Database $db
+     * @param DatabaseInterface $db
      *
      * @return void
      */
-    public static function setDatabase(Database $db): void
+    public static function setDatabase(DatabaseInterface $db): void
     {
         self::$databases[static::class] = $db;
     }
@@ -690,10 +690,10 @@ abstract class Model
      * Looks up the registry by class name, then falls back to the Model::class entry
      * (which is the "shared default" set by Model::setDatabase()).
      *
-     * @return Database
+     * @return DatabaseInterface
      * @throws EzPhpException
      */
-    protected static function database(): Database
+    protected static function database(): DatabaseInterface
     {
         $class = static::class;
 

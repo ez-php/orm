@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\ORM;
 
-use EzPhp\Exceptions\EzPhpException;
+use EzPhp\Contracts\EzPhpException;
 use EzPhp\Orm\Model;
 use EzPhp\Orm\ModelQueryBuilder;
 use EzPhp\Orm\QueryBuilder;

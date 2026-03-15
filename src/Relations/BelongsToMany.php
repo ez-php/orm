@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm\Relations;
 
-use EzPhp\Database\Database;
+use EzPhp\Contracts\DatabaseInterface;
 use EzPhp\Orm\Model;
 
 /**
@@ -15,7 +15,7 @@ use EzPhp\Orm\Model;
 final class BelongsToMany extends Relation
 {
     /**
-     * @param Database             $db
+     * @param DatabaseInterface    $db
      * @param string               $relatedTable
      * @param string               $pivotTable
      * @param string               $foreignKey      FK in pivot pointing to owning model
@@ -26,7 +26,7 @@ final class BelongsToMany extends Relation
      * @param mixed                $localValue      Current owning model's PK value (for lazy load)
      */
     public function __construct(
-        private readonly Database $db,
+        private readonly DatabaseInterface $db,
         private readonly string $relatedTable,
         private readonly string $pivotTable,
         private readonly string $foreignKey,

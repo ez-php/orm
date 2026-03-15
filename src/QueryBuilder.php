@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
-use EzPhp\Database\Database;
+use EzPhp\Contracts\DatabaseInterface;
 use InvalidArgumentException;
 
 /**
@@ -55,11 +55,11 @@ final class QueryBuilder
     /**
      * QueryBuilder Constructor
      *
-     * @param Database $db
-     * @param string   $table
+     * @param DatabaseInterface $db
+     * @param string            $table
      */
     public function __construct(
-        private readonly Database $db,
+        private readonly DatabaseInterface $db,
         private readonly string $table,
     ) {
     }

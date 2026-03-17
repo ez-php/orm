@@ -261,7 +261,7 @@ final class ModelQueryBuilder
                 }
             }
 
-            $ids = array_values(array_unique($ids));
+            $ids = array_values(array_unique($ids, SORT_REGULAR));
 
             if ($ids === []) {
                 continue;

@@ -8,7 +8,7 @@ ORM module for the [ez-php framework](https://github.com/ez-php/framework) — A
 
 - PHP 8.5+
 - ext-pdo
-- ez-php/framework ^1.0
+- ez-php/framework 0.*
 
 ## Installation
 

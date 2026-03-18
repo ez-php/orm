@@ -154,8 +154,9 @@ Active Record ORM, fluent Query Builder, and Schema Builder.
 ```
 src/
 ├── Model.php                         — Abstract Active Record base; attributes, dirty tracking, relations, hooks
-├── ModelQueryBuilder.php             — Typed query builder returning hydrated Model instances; eager-load support
-├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates
+├── ModelQueryBuilder.php             — Typed query builder returning hydrated Model instances; eager-load, paginate, chunk
+├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem
+├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk
 ├── ModelServiceProvider.php          — Calls Model::setDatabase($db) in boot(); no bindings registered
 ├── Console/
 │   └── MakeModelCommand.php          — Scaffolds a Model subclass in src/Models/
@@ -176,6 +177,8 @@ tests/
 ├── TestCase.php                      — Base PHPUnit test case
 ├── ModelTestCase.php                 — In-memory SQLite DB wired to Model; fresh DB per test method
 ├── QueryBuilderTest.php              — Covers all QB clauses and execution methods
+├── PaginatorTest.php                 — Unit tests for Paginator value object (all accessors, edge cases)
+├── PaginationTest.php                — Integration tests for QB/MQB paginate() and chunk()
 ├── ORM/ModelTest.php                 — Covers Model CRUD, dirty tracking, casts, soft deletes, relations, hooks
 ├── ORM/ModelServiceProviderTest.php  — Covers provider boot wiring
 ├── Schema/BlueprintTest.php          — Covers Blueprint SQL generation for all column types and modes
@@ -221,6 +224,8 @@ Fluent builder for raw SQL. All wither methods return a clone — the original i
 | `insert(array)` | `bool` |
 | `update(array)` | `int` (rows affected) |
 | `delete()` | `int` (rows affected) |
+| `paginate(perPage, page)` | `Paginator<array<string, mixed>>` |
+| `chunk(size, callback)` | `void` — iterates chunks until exhausted |
 
 ---
 
@@ -364,6 +369,5 @@ All relations extend `Relation` and implement:
 | Caching of query results | `ez-php/cache` + application layer |
 | Full-text search | Infrastructure layer / dedicated search service |
 | Database seeding commands | Application layer |
-| Pagination helpers (page/perPage) | Application layer |
 | Complex pivot data / pivot models | Application layer (extend `BelongsToMany` or use raw `QueryBuilder`) |
 

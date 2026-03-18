@@ -217,6 +217,56 @@ final class ModelQueryBuilder
     }
 
     /**
+     * Paginate the query results as hydrated model instances.
+     *
+     * @param int $perPage
+     * @param int $page
+     *
+     * @return Paginator<TModel>
+     */
+    public function paginate(int $perPage = 15, int $page = 1): Paginator
+    {
+        $total = $this->builder->count();
+        $rows = $this->builder->limit($perPage)->offset(($page - 1) * $perPage)->get();
+
+        $models = [];
+        foreach ($rows as $row) {
+            $models[] = $this->hydrate($row);
+        }
+
+        return new Paginator($models, $total, $perPage, $page);
+    }
+
+    /**
+     * Chunk through the query results in pages of the given size.
+     *
+     * @param int                       $size
+     * @param callable(list<TModel>): void $callback
+     *
+     * @return void
+     */
+    public function chunk(int $size, callable $callback): void
+    {
+        $page = 1;
+
+        do {
+            $rows = $this->builder->limit($size)->offset(($page - 1) * $size)->get();
+
+            if ($rows === []) {
+                break;
+            }
+
+            $models = [];
+            foreach ($rows as $row) {
+                $models[] = $this->hydrate($row);
+            }
+
+            $callback($models);
+            $page++;
+        } while (count($rows) === $size);
+    }
+
+    /**
      * @param array<string, mixed> $row
      *
      * @return TModel

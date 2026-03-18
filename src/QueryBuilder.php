@@ -432,6 +432,46 @@ final class QueryBuilder
     }
 
     /**
+     * Paginate the query results.
+     *
+     * @param int $perPage
+     * @param int $page
+     *
+     * @return Paginator<array<string, mixed>>
+     */
+    public function paginate(int $perPage = 15, int $page = 1): Paginator
+    {
+        $total = $this->count();
+        $items = $this->limit($perPage)->offset(($page - 1) * $perPage)->get();
+
+        return new Paginator($items, $total, $perPage, $page);
+    }
+
+    /**
+     * Chunk through the query results in pages of the given size.
+     *
+     * @param int                                        $size
+     * @param callable(list<array<string, mixed>>): void $callback
+     *
+     * @return void
+     */
+    public function chunk(int $size, callable $callback): void
+    {
+        $page = 1;
+
+        do {
+            $rows = $this->limit($size)->offset(($page - 1) * $size)->get();
+
+            if ($rows === []) {
+                break;
+            }
+
+            $callback($rows);
+            $page++;
+        } while (count($rows) === $size);
+    }
+
+    /**
      * @return int
      */
     public function delete(): int

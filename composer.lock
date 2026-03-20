@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d3dcb49d0bf279e07014f58299d4e8e5",
+    "content-hash": "aa7bb2adc48ae97bdf19f283b1f66241",
     "packages": [
         {
             "name": "ez-php/console",
@@ -123,16 +123,16 @@
         },
         {
             "name": "ez-php/http",
-            "version": "0.5.1",
+            "version": "0.5.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/ez-php/http.git",
-                "reference": "d46f180359a52de8d42bf7929a6d811cf6d56500"
+                "reference": "ac98e2102b1418e4b80a08c6744d7c2448afb485"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ez-php/http/zipball/d46f180359a52de8d42bf7929a6d811cf6d56500",
-                "reference": "d46f180359a52de8d42bf7929a6d811cf6d56500",
+                "url": "https://api.github.com/repos/ez-php/http/zipball/ac98e2102b1418e4b80a08c6744d7c2448afb485",
+                "reference": "ac98e2102b1418e4b80a08c6744d7c2448afb485",
                 "shasum": ""
             },
             "require": {
@@ -175,7 +175,7 @@
                 "issues": "https://github.com/ez-php/http/issues",
                 "source": "https://github.com/ez-php/http"
             },
-            "time": "2026-03-18T20:22:49+00:00"
+            "time": "2026-03-20T11:36:14+00:00"
         }
     ],
     "packages-dev": [

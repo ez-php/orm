@@ -172,4 +172,91 @@ final class PaginatorTest extends TestCase
         $p = new Paginator([], 0, 15, 1);
         $this->assertNull($p->lastItem());
     }
+
+    // ── isFirstPage ───────────────────────────────────────────────────────────
+
+    /**
+     * @return void
+     */
+    public function test_is_first_page_is_true_on_page_1(): void
+    {
+        $p = new Paginator([], 30, 10, 1);
+        $this->assertTrue($p->isFirstPage());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_is_first_page_is_false_on_page_2(): void
+    {
+        $p = new Paginator([], 30, 10, 2);
+        $this->assertFalse($p->isFirstPage());
+    }
+
+    // ── isLastPage ────────────────────────────────────────────────────────────
+
+    /**
+     * @return void
+     */
+    public function test_is_last_page_is_true_on_last_page(): void
+    {
+        $p = new Paginator([], 30, 10, 3);
+        $this->assertTrue($p->isLastPage());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_is_last_page_is_false_before_last_page(): void
+    {
+        $p = new Paginator([], 30, 10, 2);
+        $this->assertFalse($p->isLastPage());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_is_last_page_is_true_when_total_is_zero(): void
+    {
+        $p = new Paginator([], 0, 15, 1);
+        $this->assertTrue($p->isLastPage()); // lastPage = 1, currentPage = 1
+    }
+
+    // ── from / to ─────────────────────────────────────────────────────────────
+
+    /**
+     * @return void
+     */
+    public function test_from_is_alias_for_first_item(): void
+    {
+        $p = new Paginator([['id' => 4]], 5, 3, 2);
+        $this->assertSame($p->firstItem(), $p->from());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_from_is_null_when_items_empty(): void
+    {
+        $p = new Paginator([], 0, 15, 1);
+        $this->assertNull($p->from());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_to_is_alias_for_last_item(): void
+    {
+        $p = new Paginator([['id' => 1], ['id' => 2]], 5, 3, 1);
+        $this->assertSame($p->lastItem(), $p->to());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_to_is_null_when_items_empty(): void
+    {
+        $p = new Paginator([], 0, 15, 1);
+        $this->assertNull($p->to());
+    }
 }

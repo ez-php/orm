@@ -155,7 +155,7 @@ Active Record ORM, fluent Query Builder, and Schema Builder.
 src/
 ├── Model.php                         — Abstract Active Record base; attributes, dirty tracking, relations, hooks
 ├── ModelQueryBuilder.php             — Typed query builder returning hydrated Model instances; eager-load, paginate, chunk
-├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem
+├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem/isFirstPage/isLastPage/from/to
 ├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk
 ├── ModelServiceProvider.php          — Calls Model::setDatabase($db) in boot(); no bindings registered
 ├── Console/

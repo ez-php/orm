@@ -107,4 +107,44 @@ final class Paginator
 
         return $first + count($this->items) - 1;
     }
+
+    /**
+     * Return true when the current page is the first page.
+     *
+     * @return bool
+     */
+    public function isFirstPage(): bool
+    {
+        return $this->currentPage === 1;
+    }
+
+    /**
+     * Return true when the current page is the last page.
+     *
+     * @return bool
+     */
+    public function isLastPage(): bool
+    {
+        return $this->currentPage >= $this->lastPage();
+    }
+
+    /**
+     * Alias for firstItem() — 1-based index of the first item on this page.
+     *
+     * @return int|null
+     */
+    public function from(): ?int
+    {
+        return $this->firstItem();
+    }
+
+    /**
+     * Alias for lastItem() — 1-based index of the last item on this page.
+     *
+     * @return int|null
+     */
+    public function to(): ?int
+    {
+        return $this->lastItem();
+    }
 }

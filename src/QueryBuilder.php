@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
+use EzPhp\Cache\CacheInterface;
 use EzPhp\Contracts\DatabaseInterface;
 use InvalidArgumentException;
 
@@ -71,6 +72,10 @@ final class QueryBuilder
      * @var list<mixed>
      */
     private array $fromBindings = [];
+
+    private ?CacheInterface $cacheDriver = null;
+
+    private int $cacheTtl = 0;
 
     /**
      * QueryBuilder Constructor
@@ -381,6 +386,23 @@ final class QueryBuilder
     }
 
     // -------------------------------------------------------------------------
+    // CACHE
+    // -------------------------------------------------------------------------
+
+    /**
+     * Cache the results of get() using the given driver and TTL.
+     *
+     * @param int            $ttl   Seconds to cache the result; 0 means never expire.
+     * @param CacheInterface $cache The cache driver to use.
+     *
+     * @return self
+     */
+    public function cache(int $ttl, CacheInterface $cache): self
+    {
+        return clone($this, ['cacheTtl' => $ttl, 'cacheDriver' => $cache]);
+    }
+
+    // -------------------------------------------------------------------------
     // EXECUTION
     // -------------------------------------------------------------------------
 
@@ -389,9 +411,18 @@ final class QueryBuilder
      */
     public function get(): array
     {
+        $sql = $this->buildSelectSql();
         $bindings = [...$this->fromBindings, ...$this->collectWhereBindings(), ...$this->collectHavingBindings()];
 
-        return $this->db->query($this->buildSelectSql(), $bindings);
+        if ($this->cacheDriver !== null) {
+            $key = 'qb:' . md5($sql . ':' . serialize($bindings));
+            /** @var list<array<string, mixed>> $result */
+            $result = $this->cacheDriver->remember($key, $this->cacheTtl, fn (): array => $this->db->query($sql, $bindings));
+
+            return $result;
+        }
+
+        return $this->db->query($sql, $bindings);
     }
 
     /**

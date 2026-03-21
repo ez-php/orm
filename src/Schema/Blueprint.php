@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm\Schema;
 
+use InvalidArgumentException;
+
 /**
  * Class Blueprint
  *
@@ -206,6 +208,36 @@ final class Blueprint
     }
 
     /**
+     * Define an ENUM column.
+     *
+     * MySQL produces a native ENUM type; SQLite produces TEXT with a CHECK constraint.
+     *
+     * @param string       $column
+     * @param list<string> $values
+     *
+     * @return ColumnDefinition
+     */
+    public function enum(string $column, array $values): ColumnDefinition
+    {
+        if ($values === []) {
+            throw new InvalidArgumentException('enum() requires at least one value.');
+        }
+
+        $escapedValues = array_map(static fn (string $v) => "'" . str_replace("'", "''", $v) . "'", $values);
+
+        if ($this->isSqlite()) {
+            $col = $this->addColumn(new ColumnDefinition($column, 'TEXT'));
+            $col->withCheck("$column IN (" . implode(', ', $escapedValues) . ')');
+
+            return $col;
+        }
+
+        $type = 'ENUM(' . implode(', ', $escapedValues) . ')';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
      * @param string $column
      *
      * @return void
@@ -285,7 +317,20 @@ final class Blueprint
         $statements = [];
 
         foreach ($this->addedColumns as $col) {
-            $statements[] = 'ALTER TABLE ' . $table . ' ADD COLUMN ' . $this->compileColumn($col);
+            if ($col->isChanged()) {
+                // MODIFY COLUMN — MySQL only
+                if (!$this->isSqlite()) {
+                    $compiled = $this->compileColumn($col);
+                    $suffix = $this->buildPositionSuffix($col);
+                    $statements[] = 'ALTER TABLE ' . $table . ' MODIFY COLUMN ' . $compiled . $suffix;
+                }
+                // SQLite: skip MODIFY COLUMN silently (SQLite does not support it)
+                continue;
+            }
+
+            $compiled = $this->compileColumn($col);
+            $suffix = $this->buildPositionSuffix($col);
+            $statements[] = 'ALTER TABLE ' . $table . ' ADD COLUMN ' . $compiled . $suffix;
         }
 
         foreach ($this->droppedColumns as $col) {
@@ -353,6 +398,30 @@ final class Blueprint
     }
 
     /**
+     * Build the AFTER/FIRST position suffix for MySQL ALTER statements.
+     *
+     * @param ColumnDefinition $col
+     *
+     * @return string
+     */
+    private function buildPositionSuffix(ColumnDefinition $col): string
+    {
+        if ($this->isSqlite()) {
+            return '';
+        }
+
+        if ($col->isFirstColumn()) {
+            return ' FIRST';
+        }
+
+        if ($col->getAfterColumn() !== null) {
+            return ' AFTER ' . $col->getAfterColumn();
+        }
+
+        return '';
+    }
+
+    /**
      * @param ColumnDefinition $col
      *
      * @return string
@@ -373,6 +442,10 @@ final class Blueprint
 
         if ($col->isUnique()) {
             $def .= ' UNIQUE';
+        }
+
+        if ($col->getCheck() !== null) {
+            $def .= ' CHECK (' . $col->getCheck() . ')';
         }
 
         return $def;

@@ -6,6 +6,7 @@ namespace EzPhp\Orm\Relations;
 
 use EzPhp\Orm\Model;
 use EzPhp\Orm\ModelQueryBuilder;
+use EzPhp\Orm\QueryBuilder;
 
 /**
  * Class BelongsTo
@@ -55,6 +56,26 @@ final class BelongsTo extends Relation
     }
 
     /**
+     * For BelongsTo, getForeignKey returns the FK on the owning (this) model.
+     *
+     * @return string
+     */
+    public function getForeignKey(): string
+    {
+        return $this->foreignKey;
+    }
+
+    /**
+     * Return the PK on the related model.
+     *
+     * @return string
+     */
+    public function getLocalKey(): string
+    {
+        return $this->localKey;
+    }
+
+    /**
      * @param list<mixed> $ids  Values of the FK column collected from owning models
      *
      * @return list<Model>
@@ -87,5 +108,39 @@ final class BelongsTo extends Relation
             $fk = is_scalar($fkVal) ? (string) $fkVal : '';
             $model->setRelation($relation, $keyed[$fk] ?? null);
         }
+    }
+
+    /**
+     * Return count of related models per FK value.
+     *
+     * @param list<mixed> $ownerIds
+     *
+     * @return array<mixed, int>
+     */
+    public function countFor(array $ownerIds): array
+    {
+        if ($ownerIds === []) {
+            return [];
+        }
+
+        $relatedClass = $this->relatedClass;
+        $rows = (new QueryBuilder($relatedClass::database(), $relatedClass::getTable()))
+            ->select($this->localKey, 'COUNT(*) as count')
+            ->whereIn($this->localKey, $ownerIds)
+            ->groupBy($this->localKey)
+            ->get();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $keyVal = $row[$this->localKey];
+            if (!is_int($keyVal) && !is_string($keyVal)) {
+                continue;
+            }
+
+            $countVal = $row['count'];
+            $result[$keyVal] = is_numeric($countVal) ? (int) $countVal : 0;
+        }
+
+        return $result;
     }
 }

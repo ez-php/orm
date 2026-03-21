@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests;
 
 use EzPhp\Orm\QueryBuilder;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
@@ -31,6 +32,7 @@ final class QueryBuilderTest extends TestCase
         $this->db->query('INSERT INTO orders (user_id, amount) VALUES (1, 100.0)');
         $this->db->query('INSERT INTO orders (user_id, amount) VALUES (1, 50.0)');
         $this->db->query('INSERT INTO orders (user_id, amount) VALUES (2, 75.0)');
+        $this->db->query('CREATE TABLE items (id INTEGER PRIMARY KEY, tags TEXT NOT NULL)');
     }
 
     /**
@@ -470,5 +472,180 @@ final class QueryBuilderTest extends TestCase
         $min = (new QueryBuilder($this->db, 'users'))->where('active', 0)->min('score');
 
         $this->assertSame(20.0, (float) $min);
+    }
+
+    // =========================================================================
+    // Feature 3: Upsert
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_upsert_inserts_new_row(): void
+    {
+        $before = (new QueryBuilder($this->db, 'users'))->count();
+        (new QueryBuilder($this->db, 'users'))->upsert(
+            ['id' => 99, 'name' => 'Dave', 'active' => 1],
+            ['id'],
+            ['name', 'active']
+        );
+
+        $this->assertSame($before + 1, (new QueryBuilder($this->db, 'users'))->count());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_upsert_updates_on_conflict(): void
+    {
+        // id=1 already exists (Alice)
+        (new QueryBuilder($this->db, 'users'))->upsert(
+            ['id' => 1, 'name' => 'AliceUpdated', 'active' => 0],
+            ['id'],
+            ['name', 'active']
+        );
+
+        $row = (new QueryBuilder($this->db, 'users'))->where('id', 1)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('AliceUpdated', $row['name']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_upsert_throws_on_empty_data(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        (new QueryBuilder($this->db, 'users'))->upsert([], ['id']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_upsert_throws_on_empty_unique_by(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        (new QueryBuilder($this->db, 'users'))->upsert(['name' => 'Test', 'active' => 1], []);
+    }
+
+    // =========================================================================
+    // Feature 7: Batch Insert
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_insert_batch_inserts_multiple_rows(): void
+    {
+        (new QueryBuilder($this->db, 'users'))->insertBatch([
+            ['name' => 'Dave', 'active' => 1],
+            ['name' => 'Eve', 'active' => 0],
+        ]);
+
+        $this->assertSame(5, (new QueryBuilder($this->db, 'users'))->count());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_insert_batch_single_row_works(): void
+    {
+        (new QueryBuilder($this->db, 'users'))->insertBatch([
+            ['name' => 'Dave', 'active' => 1],
+        ]);
+
+        $this->assertSame(4, (new QueryBuilder($this->db, 'users'))->count());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_insert_batch_throws_on_empty(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        (new QueryBuilder($this->db, 'users'))->insertBatch([]);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_insert_batch_throws_on_mismatched_keys(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        (new QueryBuilder($this->db, 'users'))->insertBatch([
+            ['name' => 'Dave', 'active' => 1],
+            ['name' => 'Eve'],
+        ]);
+    }
+
+    // =========================================================================
+    // Feature 6: Subquery support
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_where_subquery_filters_results(): void
+    {
+        // Get users whose id is in a subquery returning ids with score > 15
+        $subQb = (new QueryBuilder($this->db, 'users'))->select('id')->where('score', '>', 15.0);
+        $rows = (new QueryBuilder($this->db, 'users'))->where('id', $subQb)->get();
+
+        // Bob (score=20) and Charlie (score=30) qualify
+        $this->assertCount(2, $rows);
+        $names = array_column($rows, 'name');
+        $this->assertContains('Bob', $names);
+        $this->assertContains('Charlie', $names);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_from_sub_uses_derived_table(): void
+    {
+        // Wrap users in a derived table and count rows
+        $subQb = (new QueryBuilder($this->db, 'users'))->select('id', 'name')->where('active', 1);
+        $count = (new QueryBuilder($this->db, 'users'))
+            ->fromSub($subQb, 'active_users')
+            ->count();
+
+        // count() uses the table name directly, not fromSub; test via get()
+        $rows = (new QueryBuilder($this->db, 'users'))
+            ->fromSub($subQb, 'active_users')
+            ->get();
+
+        $this->assertCount(2, $rows);
+
+        // Suppress phpstan warning about $count not being used
+        $this->assertSame(2, $count);
+    }
+
+    // =========================================================================
+    // Feature 13: whereJsonContains
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_where_json_contains_finds_row(): void
+    {
+        $this->db->query("INSERT INTO items (tags) VALUES ('[\"php\",\"laravel\"]')");
+        $this->db->query("INSERT INTO items (tags) VALUES ('[\"go\",\"rust\"]')");
+
+        $rows = (new QueryBuilder($this->db, 'items'))->whereJsonContains('tags', 'php')->get();
+
+        $this->assertCount(1, $rows);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_where_json_contains_no_match(): void
+    {
+        $this->db->query("INSERT INTO items (tags) VALUES ('[\"php\",\"laravel\"]')");
+
+        $rows = (new QueryBuilder($this->db, 'items'))->whereJsonContains('tags', 'python')->get();
+
+        $this->assertCount(0, $rows);
     }
 }

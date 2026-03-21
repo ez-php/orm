@@ -32,7 +32,10 @@ abstract class Model
 
     protected static string $table = '';
 
-    protected static string $primaryKey = 'id';
+    /**
+     * @var string|list<string>
+     */
+    protected static string|array $primaryKey = 'id';
 
     /**
      * @var list<string>
@@ -52,6 +55,20 @@ abstract class Model
     protected static bool $timestamps = false;
 
     protected static bool $softDeletes = false;
+
+    /**
+     * Per-class model event listeners.
+     *
+     * @var array<class-string, array<string, list<callable(static): mixed>>>
+     */
+    private static array $modelListeners = [];
+
+    /**
+     * Per-class global scopes.
+     *
+     * @var array<class-string, list<ScopeInterface>>
+     */
+    private static array $globalScopes = [];
 
     /**
      * @var array<string, mixed>
@@ -211,6 +228,25 @@ abstract class Model
         return $this->attributes;
     }
 
+    /**
+     * Return the primary key value(s) for this model instance.
+     *
+     * @return mixed
+     */
+    public function getKey(): mixed
+    {
+        if (self::isPrimaryKeyComposite()) {
+            $result = [];
+            foreach ((array) static::$primaryKey as $pkCol) {
+                $result[$pkCol] = $this->attributes[$pkCol] ?? null;
+            }
+
+            return $result;
+        }
+
+        return $this->attributes[static::scalarPrimaryKey()] ?? null;
+    }
+
     // -------------------------------------------------------------------------
     // Dirty tracking
     // -------------------------------------------------------------------------
@@ -295,16 +331,31 @@ abstract class Model
      */
     public function forceDelete(): bool
     {
-        $primaryKey = static::$primaryKey;
-        $id = $this->attributes[$primaryKey] ?? null;
+        $db = self::database();
+        $qb = new QueryBuilder($db, static::resolveTable());
 
-        if ($id === null) {
-            return false;
+        if (self::isPrimaryKeyComposite()) {
+            foreach ((array) static::$primaryKey as $pkCol) {
+                $id = $this->attributes[$pkCol] ?? null;
+
+                if ($id === null) {
+                    return false;
+                }
+
+                $qb = $qb->where($pkCol, $id);
+            }
+        } else {
+            $primaryKey = static::scalarPrimaryKey();
+            $id = $this->attributes[$primaryKey] ?? null;
+
+            if ($id === null) {
+                return false;
+            }
+
+            $qb = $qb->where($primaryKey, $id);
         }
 
-        $affected = new QueryBuilder(self::database(), static::resolveTable())
-            ->where($primaryKey, $id)
-            ->delete();
+        $affected = $qb->delete();
 
         return $affected > 0;
     }
@@ -316,7 +367,7 @@ abstract class Model
      */
     public function restore(): bool
     {
-        $primaryKey = static::$primaryKey;
+        $primaryKey = static::scalarPrimaryKey();
         $id = $this->attributes[$primaryKey] ?? null;
 
         if ($id === null) {
@@ -346,7 +397,11 @@ abstract class Model
      */
     public static function find(int|string $id): ?static
     {
-        return static::query()->where(static::$primaryKey, $id)->first();
+        if (self::isPrimaryKeyComposite()) {
+            throw new \LogicException('find() does not support composite primary keys. Use query()->where()->first() instead.');
+        }
+
+        return static::query()->where(static::scalarPrimaryKey(), $id)->first();
     }
 
     /**
@@ -400,7 +455,9 @@ abstract class Model
     public static function withTrashed(): ModelQueryBuilder
     {
         /** @var ModelQueryBuilder<static> */
-        return new ModelQueryBuilder(static::class, new QueryBuilder(self::database(), static::resolveTable()));
+        $builder = new ModelQueryBuilder(static::class, new QueryBuilder(self::database(), static::resolveTable()));
+
+        return static::applyGlobalScopes($builder);
     }
 
     /**
@@ -412,6 +469,7 @@ abstract class Model
     {
         /** @var ModelQueryBuilder<static> */
         $builder = new ModelQueryBuilder(static::class, new QueryBuilder(self::database(), static::resolveTable()));
+        $builder = static::applyGlobalScopes($builder);
 
         return $builder->whereNotNull('deleted_at');
     }
@@ -434,6 +492,110 @@ abstract class Model
     public static function getTable(): string
     {
         return static::resolveTable();
+    }
+
+    /**
+     * Return the fillable columns (used by pivot and other utilities).
+     *
+     * @return list<string>
+     */
+    public static function getFillable(): array
+    {
+        return static::$fillable;
+    }
+
+    /**
+     * Return the primary key column as a scalar string.
+     *
+     * Only call this after confirming the PK is not composite (i.e. isPrimaryKeyComposite() === false).
+     *
+     * @return string
+     */
+    protected static function scalarPrimaryKey(): string
+    {
+        $pk = static::$primaryKey;
+
+        return is_array($pk) ? $pk[0] : $pk;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Scopes
+    // -------------------------------------------------------------------------
+
+    /**
+     * Register a global scope for this model class.
+     *
+     * @param ScopeInterface $scope
+     *
+     * @return void
+     */
+    public static function addGlobalScope(ScopeInterface $scope): void
+    {
+        self::$globalScopes[static::class][] = $scope;
+    }
+
+    /**
+     * Remove all global scopes registered for this model class.
+     *
+     * @return void
+     */
+    public static function removeGlobalScopes(): void
+    {
+        unset(self::$globalScopes[static::class]);
+    }
+
+    /**
+     * Apply all registered global scopes to a query builder.
+     *
+     * @param ModelQueryBuilder<static> $builder
+     *
+     * @return ModelQueryBuilder<static>
+     */
+    protected static function applyGlobalScopes(ModelQueryBuilder $builder): ModelQueryBuilder
+    {
+        foreach (self::$globalScopes[static::class] ?? [] as $scope) {
+            /** @var ModelQueryBuilder<Model> $genericBuilder */
+            $genericBuilder = $builder;
+            /** @var ModelQueryBuilder<static> $builder */
+            $builder = $scope->apply($genericBuilder);
+        }
+
+        return $builder;
+    }
+
+    // -------------------------------------------------------------------------
+    // Model Events
+    // -------------------------------------------------------------------------
+
+    /**
+     * Register a listener for the given model event.
+     *
+     * Valid events: creating, created, updating, updated, deleting, deleted.
+     *
+     * @param string                    $event
+     * @param callable(static): mixed   $listener
+     *
+     * @return void
+     */
+    public static function on(string $event, callable $listener): void
+    {
+        $validEvents = ['creating', 'created', 'updating', 'updated', 'deleting', 'deleted'];
+
+        if (!in_array($event, $validEvents, true)) {
+            throw new \InvalidArgumentException("Invalid model event '$event'. Valid: " . implode(', ', $validEvents));
+        }
+
+        self::$modelListeners[static::class][$event][] = $listener;
+    }
+
+    /**
+     * Remove all event listeners for this model class.
+     *
+     * @return void
+     */
+    public static function flushListeners(): void
+    {
+        unset(self::$modelListeners[static::class]);
     }
 
     // -------------------------------------------------------------------------
@@ -460,9 +622,18 @@ abstract class Model
     {
         $this->beforeSave();
 
-        $primaryKey = static::$primaryKey;
-        $id = $this->attributes[$primaryKey] ?? null;
         $table = static::resolveTable();
+
+        if (self::isPrimaryKeyComposite()) {
+            if ($this->hasAllCompositePrimaryKeys()) {
+                return $this->performUpdateComposite($table);
+            }
+
+            return $this->performInsertComposite($table);
+        }
+
+        $primaryKey = static::scalarPrimaryKey();
+        $id = $this->attributes[$primaryKey] ?? null;
 
         if ($id === null) {
             return $this->performInsert($table, $primaryKey);
@@ -476,7 +647,32 @@ abstract class Model
      */
     public function delete(): bool
     {
-        $primaryKey = static::$primaryKey;
+        if (!$this->fireEvent('deleting')) {
+            return false;
+        }
+
+        $db = self::database();
+
+        if (self::isPrimaryKeyComposite()) {
+            $qb = new QueryBuilder($db, static::resolveTable());
+
+            foreach ((array) static::$primaryKey as $pkCol) {
+                $id = $this->attributes[$pkCol] ?? null;
+
+                if ($id === null) {
+                    return false;
+                }
+
+                $qb = $qb->where($pkCol, $id);
+            }
+
+            $affected = $qb->delete();
+            $this->fireEvent('deleted');
+
+            return $affected > 0;
+        }
+
+        $primaryKey = static::scalarPrimaryKey();
         $id = $this->attributes[$primaryKey] ?? null;
 
         if ($id === null) {
@@ -487,7 +683,7 @@ abstract class Model
 
         if (static::$softDeletes) {
             $now = date('Y-m-d H:i:s');
-            $affected = new QueryBuilder(self::database(), static::resolveTable())
+            $affected = new QueryBuilder($db, static::resolveTable())
                 ->where($primaryKey, $id)
                 ->update(['deleted_at' => $now]);
 
@@ -497,13 +693,15 @@ abstract class Model
             }
 
             $this->afterDelete();
+            $this->fireEvent('deleted');
 
             return $affected > 0;
         }
 
-        $affected = new QueryBuilder(self::database(), static::resolveTable())->where($primaryKey, $id)->delete();
+        $affected = new QueryBuilder($db, static::resolveTable())->where($primaryKey, $id)->delete();
 
         $this->afterDelete();
+        $this->fireEvent('deleted');
 
         return $affected > 0;
     }
@@ -658,7 +856,7 @@ abstract class Model
     /**
      * @return string
      */
-    protected static function resolveTable(): string
+    public static function resolveTable(): string
     {
         if (static::$table !== '') {
             return static::$table;
@@ -679,10 +877,10 @@ abstract class Model
         $builder = new ModelQueryBuilder(static::class, new QueryBuilder(self::database(), static::resolveTable()));
 
         if (static::$softDeletes) {
-            return $builder->whereNull('deleted_at');
+            $builder = $builder->whereNull('deleted_at');
         }
 
-        return $builder;
+        return static::applyGlobalScopes($builder);
     }
 
     /**
@@ -693,7 +891,7 @@ abstract class Model
      * @return DatabaseInterface
      * @throws EzPhpException
      */
-    protected static function database(): DatabaseInterface
+    public static function database(): DatabaseInterface
     {
         $class = static::class;
 
@@ -706,6 +904,48 @@ abstract class Model
         }
 
         throw new EzPhpException('No database resolver set. Register ModelServiceProvider first.');
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Check whether the model uses a composite primary key.
+     *
+     * @return bool
+     */
+    private static function isPrimaryKeyComposite(): bool
+    {
+        return is_array(static::$primaryKey);
+    }
+
+    /**
+     * Check whether all composite PK columns are set AND the model has been persisted.
+     *
+     * A model is considered persisted when $original is populated (set by syncOriginal()
+     * after fromRaw() or after a successful INSERT).  A freshly-constructed model always
+     * has an empty $original and must use INSERT, even when all PK attributes are present.
+     *
+     * @return bool
+     */
+    private function hasAllCompositePrimaryKeys(): bool
+    {
+        if (!self::isPrimaryKeyComposite()) {
+            return false;
+        }
+
+        if ($this->original === []) {
+            return false;
+        }
+
+        foreach ((array) static::$primaryKey as $pkCol) {
+            if (!isset($this->attributes[$pkCol])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -731,6 +971,10 @@ abstract class Model
             return false;
         }
 
+        if (!$this->fireEvent('creating')) {
+            return false;
+        }
+
         $this->beforeCreate();
 
         $result = new QueryBuilder(self::database(), $table)->insert($this->prepareForStorage($data));
@@ -747,6 +991,56 @@ abstract class Model
 
         $this->afterCreate();
         $this->afterSave();
+        $this->fireEvent('created');
+
+        return $result;
+    }
+
+    /**
+     * Insert with composite primary key — PK columns are kept in data.
+     *
+     * @param string $table
+     *
+     * @return bool
+     */
+    private function performInsertComposite(string $table): bool
+    {
+        $data = $this->attributes;
+
+        // Remove individual PK columns from data if they have no value
+        foreach ((array) static::$primaryKey as $pkCol) {
+            if (($data[$pkCol] ?? null) === null) {
+                unset($data[$pkCol]);
+            }
+        }
+
+        if (static::$timestamps) {
+            $now = date('Y-m-d H:i:s');
+            $data['created_at'] = $now;
+            $data['updated_at'] = $now;
+            $this->attributes['created_at'] = $now;
+            $this->attributes['updated_at'] = $now;
+        }
+
+        if ($data === []) {
+            return false;
+        }
+
+        if (!$this->fireEvent('creating')) {
+            return false;
+        }
+
+        $this->beforeCreate();
+
+        $result = new QueryBuilder(self::database(), $table)->insert($this->prepareForStorage($data));
+
+        if ($result) {
+            $this->syncOriginal();
+        }
+
+        $this->afterCreate();
+        $this->afterSave();
+        $this->fireEvent('created');
 
         return $result;
     }
@@ -775,6 +1069,10 @@ abstract class Model
             return true;
         }
 
+        if (!$this->fireEvent('updating')) {
+            return false;
+        }
+
         $this->beforeUpdate();
 
         $affected = new QueryBuilder(self::database(), $table)
@@ -787,6 +1085,59 @@ abstract class Model
 
         $this->afterUpdate();
         $this->afterSave();
+        $this->fireEvent('updated');
+
+        return $affected > 0;
+    }
+
+    /**
+     * Update with composite primary key.
+     *
+     * @param string $table
+     *
+     * @return bool
+     */
+    private function performUpdateComposite(string $table): bool
+    {
+        $dirty = $this->getDirty();
+
+        foreach ((array) static::$primaryKey as $pkCol) {
+            unset($dirty[$pkCol]);
+        }
+
+        if (static::$timestamps) {
+            $now = date('Y-m-d H:i:s');
+            $dirty['updated_at'] = $now;
+            $this->attributes['updated_at'] = $now;
+        }
+
+        if ($dirty === []) {
+            $this->afterSave();
+
+            return true;
+        }
+
+        if (!$this->fireEvent('updating')) {
+            return false;
+        }
+
+        $this->beforeUpdate();
+
+        $qb = new QueryBuilder(self::database(), $table);
+
+        foreach ((array) static::$primaryKey as $pkCol) {
+            $qb = $qb->where($pkCol, $this->attributes[$pkCol]);
+        }
+
+        $affected = $qb->update($this->prepareForStorage($dirty));
+
+        if ($affected > 0) {
+            $this->syncOriginal();
+        }
+
+        $this->afterUpdate();
+        $this->afterSave();
+        $this->fireEvent('updated');
 
         return $affected > 0;
     }
@@ -806,7 +1157,9 @@ abstract class Model
             if (array_key_exists($key, static::$casts) && $value !== null) {
                 $cast = static::$casts[$key];
 
-                if (in_array($cast, ['array', 'json'], true) && is_array($value)) {
+                if (is_a($cast, CastableInterface::class, true) && $value instanceof CastableInterface) {
+                    $value = $value->castTo();
+                } elseif (in_array($cast, ['array', 'json'], true) && is_array($value)) {
                     $value = json_encode($value);
                 }
             }
@@ -825,6 +1178,11 @@ abstract class Model
      */
     private function castValue(mixed $value, string $type): mixed
     {
+        if (is_a($type, CastableInterface::class, true)) {
+            /** @var class-string<CastableInterface> $type */
+            return $type::castFrom($value);
+        }
+
         if (in_array($type, ['int', 'integer'], true)) {
             return is_scalar($value) ? intval($value) : 0;
         }
@@ -890,10 +1248,32 @@ abstract class Model
 
         $cast = static::$casts[$key];
 
+        if (is_a($cast, CastableInterface::class, true) && $value instanceof CastableInterface) {
+            return $value->castTo();
+        }
+
         if (in_array($cast, ['array', 'json'], true) && is_array($value)) {
             return json_encode($value);
         }
 
         return $value;
+    }
+
+    /**
+     * Fire a model event, returning false if any listener cancels it.
+     *
+     * @param string $event
+     *
+     * @return bool
+     */
+    private function fireEvent(string $event): bool
+    {
+        foreach (self::$modelListeners[static::class][$event] ?? [] as $listener) {
+            if ($listener($this) === false) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

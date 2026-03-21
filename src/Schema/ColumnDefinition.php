@@ -19,6 +19,14 @@ final class ColumnDefinition
 
     private bool $hasDefault = false;
 
+    private ?string $checkConstraint = null;
+
+    private ?string $afterColumn = null;
+
+    private bool $isFirst = false;
+
+    private bool $isChanged = false;
+
     /**
      * ColumnDefinition Constructor
      *
@@ -67,6 +75,58 @@ final class ColumnDefinition
     }
 
     /**
+     * Add a CHECK constraint to this column.
+     *
+     * @param string $constraint
+     *
+     * @return self
+     */
+    public function withCheck(string $constraint): self
+    {
+        $this->checkConstraint = $constraint;
+
+        return $this;
+    }
+
+    /**
+     * Place this column AFTER another column (MySQL ALTER only).
+     *
+     * @param string $column
+     *
+     * @return self
+     */
+    public function after(string $column): self
+    {
+        $this->afterColumn = $column;
+
+        return $this;
+    }
+
+    /**
+     * Place this column FIRST (MySQL ALTER only).
+     *
+     * @return self
+     */
+    public function first(): self
+    {
+        $this->isFirst = true;
+
+        return $this;
+    }
+
+    /**
+     * Mark this column as being modified (MODIFY COLUMN in MySQL ALTER).
+     *
+     * @return self
+     */
+    public function change(): self
+    {
+        $this->isChanged = true;
+
+        return $this;
+    }
+
+    /**
      * @return bool
      */
     public function isNullable(): bool
@@ -104,5 +164,37 @@ final class ColumnDefinition
     public function getDefaultValue(): mixed
     {
         return $this->defaultValue;
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getCheck(): ?string
+    {
+        return $this->checkConstraint;
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getAfterColumn(): ?string
+    {
+        return $this->afterColumn;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isFirstColumn(): bool
+    {
+        return $this->isFirst;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isChanged(): bool
+    {
+        return $this->isChanged;
     }
 }

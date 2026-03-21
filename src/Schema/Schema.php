@@ -112,6 +112,90 @@ final readonly class Schema
     }
 
     /**
+     * Check whether a column exists in the given table.
+     *
+     * @param string $table
+     * @param string $column
+     *
+     * @return bool
+     */
+    public function hasColumn(string $table, string $column): bool
+    {
+        if ($this->isSqlite()) {
+            // PRAGMA table_info() is used as a table-valued function.
+            // Note: $table is developer-supplied (not user input); direct interpolation is acceptable here.
+            $stmt = $this->db->getPdo()->query('PRAGMA table_info(' . $table . ')');
+            $rows = $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+            foreach ($rows as $row) {
+                if ($row['name'] === $column) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        $rows = $this->db->query(
+            'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+            [$table, $column]
+        );
+
+        return $rows !== [];
+    }
+
+    /**
+     * Return column definitions for a table.
+     *
+     * Each entry has keys: name (string), type (string), nullable (bool).
+     *
+     * @param string $table
+     *
+     * @return list<array{name: string, type: string, nullable: bool}>
+     */
+    public function getColumns(string $table): array
+    {
+        if ($this->isSqlite()) {
+            // Note: $table is developer-supplied (not user input); direct interpolation is acceptable here.
+            $stmt = $this->db->getPdo()->query('PRAGMA table_info(' . $table . ')');
+            $rows = $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+            $result = [];
+            foreach ($rows as $row) {
+                $result[] = [
+                    'name' => (string) $row['name'],
+                    'type' => (string) $row['type'],
+                    'nullable' => (int) $row['notnull'] === 0 && (string) $row['pk'] === '0',
+                ];
+            }
+
+            return $result;
+        }
+
+        $rows = $this->db->query(
+            'SELECT COLUMN_NAME as name, COLUMN_TYPE as type, IS_NULLABLE as nullable_str'
+            . ' FROM INFORMATION_SCHEMA.COLUMNS'
+            . ' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
+            . ' ORDER BY ORDINAL_POSITION',
+            [$table]
+        );
+
+        $result = [];
+        foreach ($rows as $row) {
+            $name = $row['name'];
+            $type = $row['type'];
+            $nullableStr = $row['nullable_str'];
+            $result[] = [
+                'name' => is_string($name) ? $name : '',
+                'type' => is_string($type) ? $type : '',
+                'nullable' => strtoupper(is_string($nullableStr) ? $nullableStr : '') === 'YES',
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * @return bool
      */
     private function isSqlite(): bool

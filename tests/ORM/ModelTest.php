@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\ORM;
 
 use EzPhp\Contracts\EzPhpException;
+use EzPhp\Orm\CastableInterface;
 use EzPhp\Orm\Model;
 use EzPhp\Orm\ModelQueryBuilder;
 use EzPhp\Orm\QueryBuilder;
@@ -12,7 +13,9 @@ use EzPhp\Orm\Relations\BelongsTo;
 use EzPhp\Orm\Relations\BelongsToMany;
 use EzPhp\Orm\Relations\HasMany;
 use EzPhp\Orm\Relations\HasOne;
+use EzPhp\Orm\Relations\PivotModel;
 use EzPhp\Orm\Relations\Relation;
+use EzPhp\Orm\ScopeInterface;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use Tests\ModelTestCase;
@@ -259,6 +262,175 @@ final class HookedModel extends Model
 }
 
 // ---------------------------------------------------------------------------
+// Feature 12: CastableInterface models
+// ---------------------------------------------------------------------------
+
+/**
+ * A simple value object representing money in cents.
+ */
+final class Money implements CastableInterface
+{
+    /**
+     * @param int $cents
+     */
+    public function __construct(public readonly int $cents)
+    {
+    }
+
+    /**
+     * @param mixed $value
+     *
+     * @return static
+     */
+    public static function castFrom(mixed $value): static
+    {
+        return new static(is_numeric($value) ? (int) $value : 0);
+    }
+
+    /**
+     * @return mixed
+     */
+    public function castTo(): mixed
+    {
+        return $this->cents;
+    }
+}
+
+/**
+ * @property int   $id
+ * @property Money $price
+ */
+final class MoneyModel extends Model
+{
+    protected static string $table = 'money_items';
+
+    /** @var list<string> */
+    protected static array $fillable = ['price'];
+
+    /** @var array<string, string> */
+    protected static array $casts = ['price' => Money::class];
+}
+
+// ---------------------------------------------------------------------------
+// Feature 8: Composite primary keys
+// ---------------------------------------------------------------------------
+
+/**
+ * @property int $tenant_id
+ * @property int $user_id
+ * @property string $name
+ */
+final class CompositePkModel extends Model
+{
+    protected static string $table = 'composite_pk';
+
+    /** @var list<string>|string */
+    protected static string|array $primaryKey = ['tenant_id', 'user_id'];
+
+    /** @var list<string> */
+    protected static array $fillable = ['tenant_id', 'user_id', 'name'];
+}
+
+// ---------------------------------------------------------------------------
+// Feature 10: Model Events helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * @property int    $id
+ * @property string $name
+ */
+final class EventUser extends Model
+{
+    protected static string $table = 'users';
+
+    /** @var list<string> */
+    protected static array $fillable = ['name', 'active'];
+}
+
+/**
+ * @property int    $id
+ * @property string $name
+ */
+final class EventPost extends Model
+{
+    protected static string $table = 'posts';
+
+    /** @var list<string> */
+    protected static array $fillable = ['title', 'user_id'];
+}
+
+// ---------------------------------------------------------------------------
+// Feature 11: Global Scopes helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Scope that filters rows where active = 1.
+ */
+final class ActiveScope implements ScopeInterface
+{
+    /**
+     * @param ModelQueryBuilder<Model> $builder
+     *
+     * @return ModelQueryBuilder<Model>
+     */
+    public function apply(ModelQueryBuilder $builder): ModelQueryBuilder
+    {
+        return $builder->where('active', 1);
+    }
+}
+
+/**
+ * @property int    $id
+ * @property string $name
+ * @property int    $active
+ */
+final class ScopedUserModel extends Model
+{
+    protected static string $table = 'users';
+
+    /** @var list<string> */
+    protected static array $fillable = ['name', 'active'];
+}
+
+// ---------------------------------------------------------------------------
+// Feature 9: Pivot Models
+// ---------------------------------------------------------------------------
+
+/**
+ * @property int    $user_id
+ * @property int    $role_id
+ * @property string $assigned_at
+ */
+final class UserRolePivot extends PivotModel
+{
+    protected static string $table = 'user_roles';
+
+    /** @var list<string> */
+    protected static array $fillable = ['user_id', 'role_id', 'assigned_at'];
+}
+
+/**
+ * @property int    $id
+ * @property string $name
+ */
+final class PivotTestUser extends Model
+{
+    protected static string $table = 'users';
+
+    /** @var list<string> */
+    protected static array $fillable = ['name', 'active'];
+
+    /**
+     * @return BelongsToMany
+     */
+    public function rolesWithPivot(): BelongsToMany
+    {
+        return $this->belongsToMany(TestRole::class, 'user_roles', 'user_id', 'role_id')
+            ->using(UserRolePivot::class);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Test class
 // ---------------------------------------------------------------------------
 
@@ -275,6 +447,7 @@ final class HookedModel extends Model
 #[UsesClass(HasOne::class)]
 #[UsesClass(BelongsTo::class)]
 #[UsesClass(BelongsToMany::class)]
+#[UsesClass(PivotModel::class)]
 final class ModelTest extends ModelTestCase
 {
     /**
@@ -304,7 +477,7 @@ final class ModelTest extends ModelTestCase
         $this->db->query("INSERT INTO roles (name) VALUES ('admin')");
         $this->db->query("INSERT INTO roles (name) VALUES ('editor')");
 
-        $this->db->query('CREATE TABLE user_roles (user_id INTEGER NOT NULL, role_id INTEGER NOT NULL)');
+        $this->db->query('CREATE TABLE user_roles (user_id INTEGER NOT NULL, role_id INTEGER NOT NULL, assigned_at TEXT NOT NULL DEFAULT "2024-01-01")');
         $this->db->query('INSERT INTO user_roles (user_id, role_id) VALUES (1, 1)');
         $this->db->query('INSERT INTO user_roles (user_id, role_id) VALUES (1, 2)');
         $this->db->query('INSERT INTO user_roles (user_id, role_id) VALUES (2, 2)');
@@ -320,6 +493,28 @@ final class ModelTest extends ModelTestCase
         $this->db->query('CREATE TABLE casted (id INTEGER PRIMARY KEY AUTOINCREMENT, active INTEGER NOT NULL DEFAULT 0, score REAL NOT NULL DEFAULT 0, data TEXT NULL)');
 
         $this->db->query('CREATE TABLE hooked (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+
+        // Feature 12: CastableInterface
+        $this->db->query('CREATE TABLE money_items (id INTEGER PRIMARY KEY AUTOINCREMENT, price INTEGER NOT NULL DEFAULT 0)');
+
+        // Feature 8: Composite PK
+        $this->db->query('CREATE TABLE composite_pk (tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (tenant_id, user_id))');
+    }
+
+    /**
+     * @return void
+     */
+    protected function tearDown(): void
+    {
+        // Flush all model events and scopes to avoid leaking between tests
+        EventUser::flushListeners();
+        EventPost::flushListeners();
+        TestUser::flushListeners();
+        SoftUser::flushListeners();
+        ScopedUserModel::removeGlobalScopes();
+        TestUser::removeGlobalScopes();
+
+        parent::tearDown();
     }
 
     // =========================================================================
@@ -1143,5 +1338,393 @@ final class ModelTest extends ModelTestCase
     {
         $this->assertSame('users', TestUser::getTable());
         $this->assertSame('blog_posts', BlogPost::getTable());
+    }
+
+    // =========================================================================
+    // Feature 12: CastableInterface
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_castable_reads_as_value_object(): void
+    {
+        $this->db->query('INSERT INTO money_items (price) VALUES (999)');
+        $item = MoneyModel::find(1);
+        $this->assertNotNull($item);
+
+        $price = $item->getAttribute('price');
+        $this->assertInstanceOf(Money::class, $price);
+        $this->assertSame(999, $price->cents);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_castable_writes_to_storage(): void
+    {
+        $item = new MoneyModel(['price' => new Money(500)]);
+        $item->save();
+
+        $row = (new QueryBuilder($this->db, 'money_items'))->where('id', $item->getAttribute('id'))->first();
+        $this->assertNotNull($row);
+        $price = $row['price'];
+        $this->assertSame(500, is_numeric($price) ? (int) $price : 0);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_castable_dirty_tracking(): void
+    {
+        $this->db->query('INSERT INTO money_items (price) VALUES (100)');
+        $item = MoneyModel::find(1);
+        $this->assertNotNull($item);
+
+        // Same logical value — not dirty
+        $item->setAttribute('price', new Money(100));
+        $this->assertFalse($item->isDirty('price'));
+
+        // Changed value — dirty
+        $item->setAttribute('price', new Money(200));
+        $this->assertTrue($item->isDirty('price'));
+    }
+
+    // =========================================================================
+    // Feature 8: Composite Primary Keys
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_composite_pk_save_inserts_row(): void
+    {
+        $model = new CompositePkModel(['tenant_id' => 1, 'user_id' => 10, 'name' => 'Alice']);
+        $this->assertTrue($model->save());
+
+        $count = (new QueryBuilder($this->db, 'composite_pk'))->count();
+        $this->assertSame(1, $count);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_composite_pk_update_modifies_correct_row(): void
+    {
+        $model = new CompositePkModel(['tenant_id' => 1, 'user_id' => 10, 'name' => 'Alice']);
+        $model->save();
+
+        // Insert a second row
+        $model2 = new CompositePkModel(['tenant_id' => 1, 'user_id' => 20, 'name' => 'Bob']);
+        $model2->save();
+
+        $model->setAttribute('name', 'AliceUpdated');
+        $model->save();
+
+        $row = (new QueryBuilder($this->db, 'composite_pk'))
+            ->where('tenant_id', 1)
+            ->where('user_id', 10)
+            ->first();
+        $this->assertNotNull($row);
+        $this->assertSame('AliceUpdated', $row['name']);
+
+        // The other row must remain unchanged
+        $row2 = (new QueryBuilder($this->db, 'composite_pk'))
+            ->where('tenant_id', 1)
+            ->where('user_id', 20)
+            ->first();
+        $this->assertNotNull($row2);
+        $this->assertSame('Bob', $row2['name']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_composite_pk_delete_removes_correct_row(): void
+    {
+        $model = new CompositePkModel(['tenant_id' => 1, 'user_id' => 10, 'name' => 'Alice']);
+        $model->save();
+
+        $model2 = new CompositePkModel(['tenant_id' => 1, 'user_id' => 20, 'name' => 'Bob']);
+        $model2->save();
+
+        $model->delete();
+
+        $this->assertSame(1, (new QueryBuilder($this->db, 'composite_pk'))->count());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_composite_pk_find_throws_logic_exception(): void
+    {
+        $this->expectException(\LogicException::class);
+        CompositePkModel::find(1);
+    }
+
+    // =========================================================================
+    // Feature 10: Model Events
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_creating_event_fires_before_insert(): void
+    {
+        $fired = false;
+        EventUser::on('creating', function () use (&$fired): void {
+            $fired = true;
+        });
+
+        EventUser::create(['name' => 'Test', 'active' => 1]);
+
+        $this->assertTrue($fired);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_created_event_fires_after_insert(): void
+    {
+        $id = null;
+        EventUser::on('created', function (EventUser $model) use (&$id): void {
+            $id = $model->getAttribute('id');
+        });
+
+        EventUser::create(['name' => 'Test', 'active' => 1]);
+
+        $this->assertNotNull($id);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_creating_event_can_cancel_insert(): void
+    {
+        EventUser::on('creating', static fn (): false => false);
+
+        $before = (new QueryBuilder($this->db, 'users'))->count();
+        $result = (new EventUser(['name' => 'Ghost', 'active' => 1]))->save();
+
+        $this->assertFalse($result);
+        $this->assertSame($before, (new QueryBuilder($this->db, 'users'))->count());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_updating_event_fires_before_update(): void
+    {
+        $fired = false;
+        EventUser::on('updating', function () use (&$fired): void {
+            $fired = true;
+        });
+
+        $user = EventUser::find(1);
+        $this->assertNotNull($user);
+        $user->setAttribute('name', 'Changed');
+        $user->save();
+
+        $this->assertTrue($fired);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_deleting_event_can_cancel_delete(): void
+    {
+        EventUser::on('deleting', static fn (): false => false);
+
+        $user = EventUser::find(1);
+        $this->assertNotNull($user);
+        $result = $user->delete();
+
+        $this->assertFalse($result);
+        $this->assertSame(3, (new QueryBuilder($this->db, 'users'))->count());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_listeners_isolated_per_class(): void
+    {
+        $userFired = false;
+        $postFired = false;
+
+        EventUser::on('creating', function () use (&$userFired): void {
+            $userFired = true;
+        });
+
+        EventPost::on('creating', function () use (&$postFired): void {
+            $postFired = true;
+        });
+
+        EventUser::create(['name' => 'Test', 'active' => 1]);
+
+        $this->assertTrue($userFired);
+        $this->assertFalse($postFired); // EventPost listener must NOT fire
+    }
+
+    // =========================================================================
+    // Feature 11: Global Scopes
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_global_scope_filters_queries(): void
+    {
+        ScopedUserModel::addGlobalScope(new ActiveScope());
+
+        $users = ScopedUserModel::all();
+
+        // Only Alice (active=1) and Charlie (active=1) should be returned
+        $this->assertCount(2, $users);
+        foreach ($users as $user) {
+            $active = $user->getAttribute('active');
+            $this->assertSame(1, is_numeric($active) ? (int) $active : 0);
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public function test_global_scope_applied_to_all(): void
+    {
+        ScopedUserModel::addGlobalScope(new ActiveScope());
+
+        // Insert an inactive user so we can verify it's excluded
+        $this->db->query("INSERT INTO users (name, active) VALUES ('Inactive', 0)");
+
+        $users = ScopedUserModel::all();
+
+        // Should return only active users (Alice, Charlie)
+        $this->assertCount(2, $users);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_remove_global_scopes(): void
+    {
+        ScopedUserModel::addGlobalScope(new ActiveScope());
+        ScopedUserModel::removeGlobalScopes();
+
+        $users = ScopedUserModel::all();
+
+        $this->assertCount(3, $users);
+    }
+
+    // =========================================================================
+    // Feature 4: whereHas / doesntHave
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_where_has_returns_models_with_related(): void
+    {
+        // Users who have at least one post
+        $users = TestUser::query()->whereHas('posts')->get();
+
+        // Alice (2 posts) and Bob (1 post), Charlie (0 posts)
+        $this->assertCount(2, $users);
+        $names = array_map(fn (TestUser $u) => $u->getAttribute('name'), $users);
+        $this->assertContains('Alice', $names);
+        $this->assertContains('Bob', $names);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_where_has_with_callback_applies_condition(): void
+    {
+        // Users who have at least one post titled 'Post A'
+        $users = TestUser::query()->whereHas('posts', function (ModelQueryBuilder $qb): ModelQueryBuilder {
+            return $qb->where('title', 'Post A');
+        })->get();
+
+        $this->assertCount(1, $users);
+        $this->assertSame('Alice', $users[0]->getAttribute('name'));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_doesnt_have_returns_models_without_related(): void
+    {
+        // Users with no posts
+        $users = TestUser::query()->doesntHave('posts')->get();
+
+        $this->assertCount(1, $users);
+        $this->assertSame('Charlie', $users[0]->getAttribute('name'));
+    }
+
+    // =========================================================================
+    // Feature 5: withCount
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_with_count_adds_count_attribute(): void
+    {
+        $users = TestUser::query()->withCount('posts')->get();
+
+        $this->assertCount(3, $users);
+
+        $alice = $users[0];
+        $this->assertSame(2, $alice->getAttribute('posts_count'));
+
+        $bob = $users[1];
+        $this->assertSame(1, $bob->getAttribute('posts_count'));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_with_count_returns_zero_when_no_related(): void
+    {
+        $users = TestUser::query()->withCount('posts')->get();
+
+        $charlie = $users[2];
+        $this->assertSame(0, $charlie->getAttribute('posts_count'));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_with_count_combined_with_with(): void
+    {
+        $users = TestUser::query()->with('posts')->withCount('posts')->get();
+
+        $alice = $users[0];
+        $posts = $alice->getAttribute('posts');
+        $this->assertIsArray($posts);
+        $this->assertCount(2, $posts);
+        $this->assertSame(2, $alice->getAttribute('posts_count'));
+    }
+
+    // =========================================================================
+    // Feature 9: Pivot Models
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_belongs_to_many_with_pivot_model_has_pivot_attributes(): void
+    {
+        $user = PivotTestUser::find(1);
+        $this->assertNotNull($user);
+
+        $roles = $user->rolesWithPivot()->get();
+
+        $this->assertCount(2, $roles);
+
+        $firstRole = $roles[0];
+        $pivot = $firstRole->getAttribute('pivot');
+        $this->assertInstanceOf(UserRolePivot::class, $pivot);
+        // assigned_at should be accessible from the pivot
+        $this->assertNotNull($pivot->getAttribute('assigned_at'));
     }
 }

@@ -21,6 +21,11 @@ final class ModelQueryBuilder
     private array $eagerLoad = [];
 
     /**
+     * @var list<string>
+     */
+    private array $withCounts = [];
+
+    /**
      * @param class-string<TModel> $modelClass
      * @param QueryBuilder         $builder
      */
@@ -165,7 +170,7 @@ final class ModelQueryBuilder
     }
 
     /**
-     * Eager-load the given relations when calling get().
+     * Eager-load the given relations.
      *
      * @param string ...$relations
      *
@@ -181,6 +186,58 @@ final class ModelQueryBuilder
     }
 
     /**
+     * Add COUNT sub-queries for the given relation names.
+     *
+     * @param string ...$relations
+     *
+     * @return self<TModel>
+     */
+    public function withCount(string ...$relations): self
+    {
+        $clone = clone($this, [
+            'withCounts' => array_merge($this->withCounts, array_values($relations)),
+        ]);
+
+        return $clone;
+    }
+
+    /**
+     * Add a WHERE EXISTS correlated sub-query via a relation.
+     *
+     * @param string                                     $relation
+     * @param callable(self<Model>): self<Model>|null    $callback
+     *
+     * @return self<TModel>
+     */
+    public function whereHas(string $relation, ?callable $callback = null): self
+    {
+        return $this->buildHasClause($relation, $callback, false);
+    }
+
+    /**
+     * Add a WHERE NOT EXISTS correlated sub-query via a relation.
+     *
+     * @param string                                     $relation
+     * @param callable(self<Model>): self<Model>|null    $callback
+     *
+     * @return self<TModel>
+     */
+    public function doesntHave(string $relation, ?callable $callback = null): self
+    {
+        return $this->buildHasClause($relation, $callback, true);
+    }
+
+    /**
+     * Expose the underlying QueryBuilder (read-only use only).
+     *
+     * @return QueryBuilder
+     */
+    public function getQueryBuilder(): QueryBuilder
+    {
+        return $this->builder;
+    }
+
+    /**
      * @return list<TModel>
      */
     public function get(): array
@@ -193,6 +250,10 @@ final class ModelQueryBuilder
 
         if ($this->eagerLoad !== [] && $models !== []) {
             $this->loadEagerRelations($models);
+        }
+
+        if ($this->withCounts !== [] && $models !== []) {
+            $this->loadCounts($models);
         }
 
         return $models;
@@ -320,5 +381,127 @@ final class ModelQueryBuilder
             $results = $rel->eagerLoadFor($ids);
             $rel->match($models, $results, $relation);
         }
+    }
+
+    /**
+     * Load relation counts onto each model.
+     *
+     * @param list<TModel> $models
+     *
+     * @return void
+     */
+    private function loadCounts(array $models): void
+    {
+        if ($models === []) {
+            return;
+        }
+
+        $firstModel = $models[0];
+
+        foreach ($this->withCounts as $relationName) {
+            if (!method_exists($firstModel, $relationName)) {
+                continue;
+            }
+
+            /** @var callable(): mixed $callable */
+            $callable = [$firstModel, $relationName];
+            /** @var mixed $rel */
+            $rel = $callable();
+
+            if (!($rel instanceof Relation)) {
+                continue;
+            }
+
+            $ownerKey = $rel->getOwnerKey();
+            $ownerIds = [];
+
+            foreach ($models as $model) {
+                $val = $model->getAttribute($ownerKey);
+
+                if ($val !== null) {
+                    $ownerIds[] = $val;
+                }
+            }
+
+            $ownerIds = array_values(array_unique($ownerIds, SORT_REGULAR));
+            $counts = $rel->countFor($ownerIds);
+
+            foreach ($models as $model) {
+                $id = $model->getAttribute($ownerKey);
+                if (!is_int($id) && !is_string($id)) {
+                    $model->setAttribute($relationName . '_count', 0);
+                    continue;
+                }
+
+                $model->setAttribute($relationName . '_count', $counts[$id] ?? 0);
+            }
+        }
+    }
+
+    /**
+     * Build a whereHas or doesntHave clause.
+     *
+     * @param string                                     $relation
+     * @param callable(self<Model>): self<Model>|null    $callback
+     * @param bool                                       $not
+     *
+     * @return self<TModel>
+     */
+    private function buildHasClause(string $relation, ?callable $callback, bool $not): self
+    {
+        $modelClass = $this->modelClass;
+        $ghostModel = new $modelClass();
+
+        if (!method_exists($ghostModel, $relation)) {
+            return $this;
+        }
+
+        /** @var callable(): mixed $callable */
+        $callable = [$ghostModel, $relation];
+        /** @var mixed $relInstance */
+        $relInstance = $callable();
+
+        if (!($relInstance instanceof Relation)) {
+            return $this;
+        }
+
+        $relatedClass = $relInstance->getRelatedClass();
+        $foreignKey = $relInstance->getForeignKey();
+        $ownerKey = $relInstance->getLocalKey();
+        $ownerTable = $modelClass::resolveTable();
+        $relatedTable = $relatedClass::resolveTable();
+
+        // Build inner QB for the correlated sub-query
+        $innerQb = new QueryBuilder($modelClass::database(), $relatedTable);
+        $innerQb = $innerQb->select('1');
+
+        if ($callback !== null) {
+            /** @var ModelQueryBuilder<Model> $innerMqb */
+            $innerMqb = new self($relatedClass, $innerQb);
+            /** @var ModelQueryBuilder<Model> $innerMqb */
+            $innerMqb = $callback($innerMqb);
+            $innerQb = $innerMqb->getQueryBuilder();
+        }
+
+        // The correlated WHERE links related.fk = owner.pk
+        $correlatedWhere = "$relatedTable.$foreignKey = $ownerTable.$ownerKey";
+
+        $subSql = $innerQb->toSql();
+        // Inject the correlated WHERE into the sub-query SQL
+        if (str_contains($subSql, ' WHERE ')) {
+            $subSql .= " AND $correlatedWhere";
+        } else {
+            $subSql .= " WHERE $correlatedWhere";
+        }
+
+        $subBindings = $innerQb->getBindings();
+
+        if ($not) {
+            $newBuilder = $this->builder->whereNotExists($subSql, $subBindings);
+        } else {
+            $newBuilder = $this->builder->whereExists($subSql, $subBindings);
+        }
+
+        return clone($this, ['builder' => $newBuilder]);
     }
 }

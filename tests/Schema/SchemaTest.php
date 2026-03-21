@@ -431,4 +431,121 @@ final class SchemaTest extends TestCase
 
         $this->assertFalse($schema->hasTable('ez_php_schema_test_nonexistent_' . uniqid()));
     }
+
+    // =========================================================================
+    // Feature 15: Table Introspection
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_has_column_returns_true_for_existing_column(): void
+    {
+        $this->schema->create('users', function (Blueprint $t): void {
+            $t->id();
+            $t->string('name');
+        });
+
+        $this->assertTrue($this->schema->hasColumn('users', 'name'));
+        $this->assertTrue($this->schema->hasColumn('users', 'id'));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_has_column_returns_false_for_nonexistent_column(): void
+    {
+        $this->schema->create('users', function (Blueprint $t): void {
+            $t->id();
+            $t->string('name');
+        });
+
+        $this->assertFalse($this->schema->hasColumn('users', 'email'));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_get_columns_returns_column_definitions(): void
+    {
+        $this->schema->create('users', function (Blueprint $t): void {
+            $t->id();
+            $t->string('name');
+        });
+
+        $columns = $this->schema->getColumns('users');
+
+        $this->assertCount(2, $columns);
+        $names = array_column($columns, 'name');
+        $this->assertContains('id', $names);
+        $this->assertContains('name', $names);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_get_columns_includes_nullable_flag(): void
+    {
+        $this->schema->create('posts', function (Blueprint $t): void {
+            $t->id();
+            $t->string('title');
+            $t->text('body')->nullable();
+        });
+
+        $columns = $this->schema->getColumns('posts');
+        $byName = [];
+
+        foreach ($columns as $col) {
+            $byName[$col['name']] = $col;
+        }
+
+        $this->assertFalse($byName['title']['nullable']);
+        $this->assertTrue($byName['body']['nullable']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_get_columns_returns_empty_for_nonexistent_table(): void
+    {
+        $columns = $this->schema->getColumns('nonexistent_table');
+
+        $this->assertSame([], $columns);
+    }
+
+    // =========================================================================
+    // Feature 16: Enum Columns (integration)
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_enum_column_accepts_valid_value(): void
+    {
+        $this->schema->create('things', function (Blueprint $t): void {
+            $t->id();
+            $t->enum('status', ['active', 'inactive']);
+        });
+
+        $this->db->query("INSERT INTO things (status) VALUES ('active')");
+        $rows = $this->db->query('SELECT status FROM things');
+
+        $this->assertSame('active', $rows[0]['status']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_enum_column_rejects_invalid_value(): void
+    {
+        $this->db->getPdo()->exec('PRAGMA ignore_check_constraints = OFF');
+
+        $this->schema->create('things', function (Blueprint $t): void {
+            $t->id();
+            $t->enum('status', ['active', 'inactive']);
+        });
+
+        $this->expectException(PDOException::class);
+        $this->db->query("INSERT INTO things (status) VALUES ('deleted')");
+    }
 }

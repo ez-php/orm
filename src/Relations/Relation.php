@@ -33,6 +33,22 @@ abstract class Relation
     abstract public function getRelatedClass(): string;
 
     /**
+     * Return the FK column name on the related table (pointing back to the owner).
+     * For BelongsTo this is the FK on the owning model; for BelongsToMany it is
+     * the FK in the pivot that points to the owner.
+     *
+     * @return string
+     */
+    abstract public function getForeignKey(): string;
+
+    /**
+     * Return the local key (PK) of the owning model used for correlated subqueries.
+     *
+     * @return string
+     */
+    abstract public function getLocalKey(): string;
+
+    /**
      * Load all related models for a set of owner-key values.
      *
      * @param list<mixed> $ids
@@ -51,4 +67,13 @@ abstract class Relation
      * @return void
      */
     abstract public function match(array $models, array $results, string $relation): void;
+
+    /**
+     * Return a count of related models keyed by owner-key value.
+     *
+     * @param list<mixed> $ownerIds
+     *
+     * @return array<mixed, int>
+     */
+    abstract public function countFor(array $ownerIds): array;
 }

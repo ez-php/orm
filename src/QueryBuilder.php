@@ -12,9 +12,12 @@ use InvalidArgumentException;
  *
  * @package EzPhp\Orm
  *
- * @phpstan-type BasicWhere array{type: 'basic', boolean: string, column: string, operator: string, value: mixed}
- * @phpstan-type InWhere    array{type: 'in',    boolean: string, column: string, values: list<mixed>, not: bool}
- * @phpstan-type NullWhere  array{type: 'null',  boolean: string, column: string, not: bool}
+ * @phpstan-type BasicWhere       array{type: 'basic',        boolean: string, column: string, operator: string, value: mixed}
+ * @phpstan-type InWhere          array{type: 'in',           boolean: string, column: string, values: list<mixed>, not: bool}
+ * @phpstan-type NullWhere        array{type: 'null',         boolean: string, column: string, not: bool}
+ * @phpstan-type SubqueryWhere    array{type: 'subquery',     boolean: string, column: string, operator: string, subquery: QueryBuilder}
+ * @phpstan-type JsonContainsWhere array{type: 'json_contains', boolean: string, column: string, value: mixed}
+ * @phpstan-type ExistsWhere      array{type: 'exists',       boolean: string, not: bool, sql: string, bindings: list<mixed>}
  */
 final class QueryBuilder
 {
@@ -24,7 +27,7 @@ final class QueryBuilder
     private array $columns = ['*'];
 
     /**
-     * @var list<BasicWhere|InWhere|NullWhere>
+     * @var list<BasicWhere|InWhere|NullWhere|SubqueryWhere|JsonContainsWhere|ExistsWhere>
      */
     private array $wheres = [];
 
@@ -53,6 +56,23 @@ final class QueryBuilder
     private ?int $offsetValue = null;
 
     /**
+     * Detected PDO driver name (sqlite or mysql).
+     */
+    private string $driver = '';
+
+    /**
+     * Optional FROM expression when using fromSub().
+     */
+    private ?string $fromExpression = null;
+
+    /**
+     * Bindings for the fromSub() derived table.
+     *
+     * @var list<mixed>
+     */
+    private array $fromBindings = [];
+
+    /**
      * QueryBuilder Constructor
      *
      * @param DatabaseInterface $db
@@ -62,6 +82,8 @@ final class QueryBuilder
         private readonly DatabaseInterface $db,
         private readonly string $table,
     ) {
+        $driverAttr = $db->getPdo()->getAttribute(\PDO::ATTR_DRIVER_NAME);
+        $this->driver = is_string($driverAttr) ? $driverAttr : '';
     }
 
     // -------------------------------------------------------------------------
@@ -160,6 +182,54 @@ final class QueryBuilder
     {
         $clone = clone $this;
         $clone->wheres[] = ['type' => 'null', 'boolean' => 'AND', 'column' => $column, 'not' => true];
+
+        return $clone;
+    }
+
+    /**
+     * Add a WHERE EXISTS or WHERE NOT EXISTS condition.
+     *
+     * @param string      $subquerySql
+     * @param list<mixed> $bindings
+     *
+     * @return self
+     */
+    public function whereExists(string $subquerySql, array $bindings = []): self
+    {
+        $clone = clone $this;
+        $clone->wheres[] = ['type' => 'exists', 'boolean' => 'AND', 'not' => false, 'sql' => $subquerySql, 'bindings' => $bindings];
+
+        return $clone;
+    }
+
+    /**
+     * Add a WHERE NOT EXISTS condition.
+     *
+     * @param string      $subquerySql
+     * @param list<mixed> $bindings
+     *
+     * @return self
+     */
+    public function whereNotExists(string $subquerySql, array $bindings = []): self
+    {
+        $clone = clone $this;
+        $clone->wheres[] = ['type' => 'exists', 'boolean' => 'AND', 'not' => true, 'sql' => $subquerySql, 'bindings' => $bindings];
+
+        return $clone;
+    }
+
+    /**
+     * Add a WHERE JSON_CONTAINS condition.
+     *
+     * @param string $column
+     * @param mixed  $value
+     *
+     * @return self
+     */
+    public function whereJsonContains(string $column, mixed $value): self
+    {
+        $clone = clone $this;
+        $clone->wheres[] = ['type' => 'json_contains', 'boolean' => 'AND', 'column' => $column, 'value' => $value];
 
         return $clone;
     }
@@ -289,6 +359,28 @@ final class QueryBuilder
     }
 
     // -------------------------------------------------------------------------
+    // fromSub
+    // -------------------------------------------------------------------------
+
+    /**
+     * Use a subquery as the FROM source (derived table).
+     *
+     * @param QueryBuilder $subquery
+     * @param string       $alias
+     *
+     * @return self
+     */
+    public function fromSub(QueryBuilder $subquery, string $alias): self
+    {
+        $clone = clone($this, [
+            'fromExpression' => '(' . $subquery->toSql() . ') AS ' . $alias,
+            'fromBindings' => $subquery->getBindings(),
+        ]);
+
+        return $clone;
+    }
+
+    // -------------------------------------------------------------------------
     // EXECUTION
     // -------------------------------------------------------------------------
 
@@ -297,7 +389,7 @@ final class QueryBuilder
      */
     public function get(): array
     {
-        $bindings = [...$this->collectWhereBindings(), ...$this->collectHavingBindings()];
+        $bindings = [...$this->fromBindings, ...$this->collectWhereBindings(), ...$this->collectHavingBindings()];
 
         return $this->db->query($this->buildSelectSql(), $bindings);
     }
@@ -317,8 +409,9 @@ final class QueryBuilder
      */
     public function count(): int
     {
-        $sql = 'SELECT COUNT(*) as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
-        $result = $this->db->query($sql, $this->collectWhereBindings());
+        $from = $this->fromExpression ?? $this->table;
+        $sql = 'SELECT COUNT(*) as aggregate FROM ' . $from . $this->buildJoins() . $this->buildWhere();
+        $result = $this->db->query($sql, [...$this->fromBindings, ...$this->collectWhereBindings()]);
 
         /** @var int $count */
         $count = $result[0]['aggregate'] ?? 0;
@@ -411,6 +504,104 @@ final class QueryBuilder
     }
 
     /**
+     * Insert multiple rows in a single statement.
+     *
+     * @param list<array<string, mixed>> $rows
+     *
+     * @return bool
+     */
+    public function insertBatch(array $rows): bool
+    {
+        if ($rows === []) {
+            throw new InvalidArgumentException('insertBatch() requires at least one row.');
+        }
+
+        $keys = array_keys($rows[0]);
+
+        foreach ($rows as $row) {
+            if (array_keys($row) !== $keys) {
+                throw new InvalidArgumentException('insertBatch() rows must all have the same keys.');
+            }
+        }
+
+        $columns = implode(', ', $keys);
+        $rowPlaceholder = '(' . implode(', ', array_fill(0, count($keys), '?')) . ')';
+        $allPlaceholders = implode(', ', array_fill(0, count($rows), $rowPlaceholder));
+
+        $sql = "INSERT INTO $this->table ($columns) VALUES $allPlaceholders";
+
+        $bindings = [];
+        foreach ($rows as $row) {
+            foreach ($row as $value) {
+                $bindings[] = $value;
+            }
+        }
+
+        $stmt = $this->db->getPdo()->prepare($sql);
+
+        return $stmt->execute($bindings);
+    }
+
+    /**
+     * Insert a row or update on duplicate key / unique conflict.
+     *
+     * @param array<string, mixed> $data      Full row data
+     * @param list<string>         $uniqueBy  Conflict columns
+     * @param list<string>         $update    Columns to update on conflict (defaults to all non-unique columns)
+     *
+     * @return bool
+     */
+    public function upsert(array $data, array $uniqueBy, array $update = []): bool
+    {
+        if ($data === []) {
+            throw new InvalidArgumentException('upsert() requires non-empty data.');
+        }
+
+        if ($uniqueBy === []) {
+            throw new InvalidArgumentException('upsert() requires at least one unique-by column.');
+        }
+
+        // Derive update columns if not provided
+        if ($update === []) {
+            $update = array_values(array_diff(array_keys($data), $uniqueBy));
+        }
+
+        $columns = implode(', ', array_keys($data));
+        $placeholders = implode(', ', array_fill(0, count($data), '?'));
+
+        if ($this->driver === 'mysql') {
+            if ($update === []) {
+                $firstKey = array_keys($data)[0];
+                $noOp = "$firstKey = VALUES($firstKey)";
+                $updateSql = $noOp;
+            } else {
+                $sets = array_map(static fn (string $col) => "$col = VALUES($col)", $update);
+                $updateSql = implode(', ', $sets);
+            }
+
+            $sql = "INSERT INTO $this->table ($columns) VALUES ($placeholders) ON DUPLICATE KEY UPDATE $updateSql";
+        } else {
+            // SQLite
+            $uniqueCols = implode(', ', $uniqueBy);
+
+            if ($update === []) {
+                $firstKey = array_keys($data)[0];
+                $noOp = "$firstKey = excluded.$firstKey";
+                $updateSql = $noOp;
+            } else {
+                $sets = array_map(static fn (string $col) => "$col = excluded.$col", $update);
+                $updateSql = implode(', ', $sets);
+            }
+
+            $sql = "INSERT INTO $this->table ($columns) VALUES ($placeholders) ON CONFLICT($uniqueCols) DO UPDATE SET $updateSql";
+        }
+
+        $stmt = $this->db->getPdo()->prepare($sql);
+
+        return $stmt->execute(array_values($data));
+    }
+
+    /**
      * @param array<string, mixed> $data
      *
      * @return int
@@ -485,6 +676,30 @@ final class QueryBuilder
     }
 
     // -------------------------------------------------------------------------
+    // PUBLIC SQL ACCESS (for subquery support)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Return the SELECT SQL string without executing.
+     *
+     * @return string
+     */
+    public function toSql(): string
+    {
+        return $this->buildSelectSql();
+    }
+
+    /**
+     * Return all bindings for the current SELECT query.
+     *
+     * @return list<mixed>
+     */
+    public function getBindings(): array
+    {
+        return [...$this->fromBindings, ...$this->collectWhereBindings(), ...$this->collectHavingBindings()];
+    }
+
+    // -------------------------------------------------------------------------
     // PRIVATE HELPERS
     // -------------------------------------------------------------------------
 
@@ -501,6 +716,32 @@ final class QueryBuilder
         $clone = clone $this;
 
         static $operators = ['=', '!=', '<>', '<', '>', '<=', '>=', 'like', 'not like'];
+
+        // Three-arg form with a QueryBuilder subquery
+        if ($value instanceof self) {
+            $clone->wheres[] = [
+                'type' => 'subquery',
+                'boolean' => $boolean,
+                'column' => $column,
+                'operator' => is_string($operatorOrValue) ? strtoupper($operatorOrValue) : '=',
+                'subquery' => $value,
+            ];
+
+            return $clone;
+        }
+
+        // Two-arg form with a QueryBuilder subquery — defaults to IN
+        if ($value === null && $operatorOrValue instanceof self) {
+            $clone->wheres[] = [
+                'type' => 'subquery',
+                'boolean' => $boolean,
+                'column' => $column,
+                'operator' => 'IN',
+                'subquery' => $operatorOrValue,
+            ];
+
+            return $clone;
+        }
 
         if ($value !== null) {
             // Three-argument form: operatorOrValue MUST be a valid operator string.
@@ -533,6 +774,20 @@ final class QueryBuilder
                 foreach ($where['values'] as $v) {
                     $bindings[] = $v;
                 }
+            } elseif ($where['type'] === 'subquery') {
+                foreach ($where['subquery']->getBindings() as $b) {
+                    $bindings[] = $b;
+                }
+            } elseif ($where['type'] === 'json_contains') {
+                if ($this->driver === 'mysql') {
+                    $bindings[] = json_encode($where['value']);
+                } else {
+                    $bindings[] = $where['value'];
+                }
+            } elseif ($where['type'] === 'exists') {
+                foreach ($where['bindings'] as $b) {
+                    $bindings[] = $b;
+                }
             }
             // 'null' type produces no bindings
         }
@@ -559,8 +814,10 @@ final class QueryBuilder
      */
     private function buildSelectSql(): string
     {
+        $from = $this->fromExpression ?? $this->table;
+
         return 'SELECT ' . implode(', ', $this->columns)
-            . ' FROM ' . $this->table
+            . ' FROM ' . $from
             . $this->buildJoins()
             . $this->buildWhere()
             . $this->buildGroupBy()
@@ -605,7 +862,7 @@ final class QueryBuilder
     }
 
     /**
-     * @param BasicWhere|InWhere|NullWhere $where
+     * @param BasicWhere|InWhere|NullWhere|SubqueryWhere|JsonContainsWhere|ExistsWhere $where
      *
      * @return string
      */
@@ -620,6 +877,26 @@ final class QueryBuilder
             $not = $where['not'] ? 'NOT ' : '';
 
             return "{$where['column']} {$not}IN ($placeholders)";
+        }
+
+        if ($where['type'] === 'subquery') {
+            // IN/NOT IN subquery uses parentheses around the subquery; scalar comparison uses scalar form.
+            return "{$where['column']} {$where['operator']} ({$where['subquery']->toSql()})";
+        }
+
+        if ($where['type'] === 'json_contains') {
+            if ($this->driver === 'mysql') {
+                return "JSON_CONTAINS({$where['column']}, ?)";
+            }
+
+            // SQLite: check if the value exists in the JSON array
+            return "EXISTS (SELECT 1 FROM json_each({$where['column']}) WHERE json_each.value = ?)";
+        }
+
+        if ($where['type'] === 'exists') {
+            $not = $where['not'] ? 'NOT ' : '';
+
+            return "{$not}EXISTS ({$where['sql']})";
         }
 
         // type === 'null'

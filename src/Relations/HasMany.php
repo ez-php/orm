@@ -6,6 +6,7 @@ namespace EzPhp\Orm\Relations;
 
 use EzPhp\Orm\Model;
 use EzPhp\Orm\ModelQueryBuilder;
+use EzPhp\Orm\QueryBuilder;
 
 /**
  * Class HasMany
@@ -61,6 +62,26 @@ final class HasMany extends Relation
     }
 
     /**
+     * Return the FK column on the related model that points back to the owner.
+     *
+     * @return string
+     */
+    public function getForeignKey(): string
+    {
+        return $this->foreignKey;
+    }
+
+    /**
+     * Return the local key (PK) on the owning model.
+     *
+     * @return string
+     */
+    public function getLocalKey(): string
+    {
+        return $this->localKey;
+    }
+
+    /**
      * @param list<mixed> $ids
      *
      * @return list<Model>
@@ -89,5 +110,39 @@ final class HasMany extends Relation
             );
             $model->setRelation($relation, $matched);
         }
+    }
+
+    /**
+     * Return count of related models per owner-key value.
+     *
+     * @param list<mixed> $ownerIds
+     *
+     * @return array<mixed, int>
+     */
+    public function countFor(array $ownerIds): array
+    {
+        if ($ownerIds === []) {
+            return [];
+        }
+
+        $relatedClass = $this->relatedClass;
+        $rows = (new QueryBuilder($relatedClass::database(), $relatedClass::getTable()))
+            ->select($this->foreignKey, 'COUNT(*) as count')
+            ->whereIn($this->foreignKey, $ownerIds)
+            ->groupBy($this->foreignKey)
+            ->get();
+
+        $result = [];
+        foreach ($rows as $row) {
+            $keyVal = $row[$this->foreignKey];
+            if (!is_int($keyVal) && !is_string($keyVal)) {
+                continue;
+            }
+
+            $countVal = $row['count'];
+            $result[$keyVal] = is_numeric($countVal) ? (int) $countVal : 0;
+        }
+
+        return $result;
     }
 }

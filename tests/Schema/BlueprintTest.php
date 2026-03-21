@@ -7,6 +7,7 @@ namespace Tests\Schema;
 use EzPhp\Orm\Schema\Blueprint;
 use EzPhp\Orm\Schema\ColumnDefinition;
 use EzPhp\Orm\Schema\ForeignKeyDefinition;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use Tests\TestCase;
@@ -446,5 +447,107 @@ final class BlueprintTest extends TestCase
 
         $this->assertCount(1, $stmts);
         $this->assertSame('CREATE INDEX idx_full_name ON users (first_name, last_name)', $stmts[0]);
+    }
+
+    // =========================================================================
+    // Feature 16: Enum Columns
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_enum_mysql_generates_enum_type(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->enum('status', ['active', 'inactive']);
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString("ENUM('active', 'inactive')", $sql);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_enum_sqlite_generates_check_constraint(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->enum('status', ['active', 'inactive']);
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString('TEXT', $sql);
+        $this->assertStringContainsString("CHECK (status IN ('active', 'inactive'))", $sql);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_enum_throws_on_empty_values(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $bp = new Blueprint('mysql');
+        $bp->enum('status', []);
+    }
+
+    // =========================================================================
+    // Feature 14: Column Modifiers (after/first/change)
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_after_modifier_in_alter_sql(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->string('email')->after('name');
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertStringContainsString('ADD COLUMN email VARCHAR(255) NOT NULL AFTER name', $stmts[0]);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_first_modifier_in_alter_sql(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->integer('sort_order')->first();
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertStringContainsString('ADD COLUMN sort_order INTEGER NOT NULL FIRST', $stmts[0]);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_change_generates_modify_column(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->string('name')->change();
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertStringContainsString('MODIFY COLUMN name VARCHAR(255) NOT NULL', $stmts[0]);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_change_skipped_on_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite', 'alter');
+        $bp->string('name')->change();
+
+        $stmts = $bp->toAlterSql('users');
+
+        // SQLite does not support MODIFY COLUMN — should produce no statements
+        $this->assertCount(0, $stmts);
     }
 }

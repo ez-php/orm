@@ -58,6 +58,44 @@ $user->save();
 $user->delete();
 ```
 
+### Soft deletes
+
+Enable soft deletes by setting `$softDeletes = true` on the model and adding a `deleted_at` column to the table:
+
+```php
+class Post extends Model
+{
+    protected static string $table = 'posts';
+    protected static bool $softDeletes = true;
+}
+```
+
+```php
+Schema::create('posts', function (Blueprint $table) {
+    $table->id();
+    $table->string('title');
+    $table->timestamps();
+    $table->timestamp('deleted_at')->nullable();
+});
+```
+
+`delete()` now sets `deleted_at` to the current timestamp instead of removing the row. All standard queries (`query()`, `where()`, `all()`, `find()`) automatically add `WHERE deleted_at IS NULL`, so soft-deleted rows are invisible by default.
+
+```php
+$post->delete();        // sets deleted_at — row stays in the DB
+$post->isDeleted();     // true
+
+$post->restore();       // clears deleted_at — row is visible again
+$post->forceDelete();   // hard-deletes regardless of $softDeletes
+```
+
+To include soft-deleted rows in a query:
+
+```php
+Post::withTrashed()->where('user_id', 42)->get();  // all rows, deleted or not
+Post::onlyTrashed()->get();                         // only soft-deleted rows
+```
+
 ### Relations
 
 ```php

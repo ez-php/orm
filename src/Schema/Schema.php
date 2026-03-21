@@ -13,16 +13,16 @@ use PDO;
  *
  * @package EzPhp\Orm\Schema
  */
-final class Schema
+final readonly class Schema
 {
-    private readonly string $driver;
+    private string $driver;
 
     /**
      * Schema Constructor
      *
      * @param DatabaseInterface $db
      */
-    public function __construct(private readonly DatabaseInterface $db)
+    public function __construct(private DatabaseInterface $db)
     {
         /** @var string $driver */
         $driver = $db->getPdo()->getAttribute(PDO::ATTR_DRIVER_NAME);

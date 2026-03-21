@@ -36,6 +36,7 @@ final class SchemaServiceProviderTest extends ApplicationTestCase
 
     /**
      * @return void
+     * @throws \ReflectionException
      */
     public function test_register_binds_schema_into_container(): void
     {
@@ -44,6 +45,7 @@ final class SchemaServiceProviderTest extends ApplicationTestCase
 
     /**
      * @return void
+     * @throws \ReflectionException
      */
     public function test_schema_resolves_as_singleton(): void
     {

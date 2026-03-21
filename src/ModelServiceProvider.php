@@ -6,7 +6,6 @@ namespace EzPhp\Orm;
 
 use EzPhp\Contracts\DatabaseInterface;
 use EzPhp\Contracts\ServiceProvider;
-use ReflectionException;
 
 /**
  * Class ModelServiceProvider
@@ -17,7 +16,6 @@ final class ModelServiceProvider extends ServiceProvider
 {
     /**
      * @return void
-     * @throws ReflectionException
      */
     public function boot(): void
     {

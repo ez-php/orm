@@ -14,7 +14,7 @@ namespace EzPhp\Orm;
  *
  * @package EzPhp\Orm
  */
-final class Paginator
+final readonly class Paginator
 {
     /**
      * @param list<T> $items
@@ -23,10 +23,10 @@ final class Paginator
      * @param int     $currentPage
      */
     public function __construct(
-        private readonly array $items,
-        private readonly int $total,
-        private readonly int $perPage,
-        private readonly int $currentPage,
+        private array $items,
+        private int $total,
+        private int $perPage,
+        private int $currentPage,
     ) {
     }
 

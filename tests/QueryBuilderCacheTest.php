@@ -7,7 +7,6 @@ namespace Tests;
 use EzPhp\Cache\ArrayDriver;
 use EzPhp\Orm\QueryBuilder;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\UsesClass;
 
 /**
  * Class QueryBuilderCacheTest
@@ -18,7 +17,6 @@ use PHPUnit\Framework\Attributes\UsesClass;
  * @package Tests
  */
 #[CoversClass(QueryBuilder::class)]
-#[UsesClass(ArrayDriver::class)]
 final class QueryBuilderCacheTest extends TestCase
 {
     private PdoDatabase $db;

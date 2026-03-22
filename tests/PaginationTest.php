@@ -258,6 +258,26 @@ final class PaginationTest extends ModelTestCase
 
         $this->assertSame(3, $calls); // 4+4+2
     }
+
+    // ── paginate() input validation ───────────────────────────────────────────
+
+    /**
+     * @return void
+     */
+    public function test_qb_paginate_throws_when_per_page_is_zero(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new QueryBuilder($this->db, 'items'))->paginate(0, 1);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_qb_paginate_throws_when_per_page_is_negative(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new QueryBuilder($this->db, 'items'))->paginate(-5, 1);
+    }
 }
 
 /**

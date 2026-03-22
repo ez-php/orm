@@ -334,7 +334,9 @@ abstract class Model
      */
     public function trashed(): bool
     {
-        return ($this->attributes['deleted_at'] ?? null) !== null;
+        $deletedAt = $this->attributes['deleted_at'] ?? null;
+
+        return $deletedAt !== null && $deletedAt !== '0000-00-00 00:00:00';
     }
 
     /**
@@ -990,7 +992,19 @@ abstract class Model
 
         $this->beforeCreate();
 
-        $result = new QueryBuilder(self::database(), $table)->insert($this->prepareForStorage($data));
+        try {
+            $result = new QueryBuilder(self::database(), $table)->insert($this->prepareForStorage($data));
+        } catch (\PDOException $e) {
+            if (str_starts_with((string) $e->getCode(), '23')) {
+                throw new DuplicateKeyException(
+                    "Duplicate key violation in table '$table'.",
+                    0,
+                    $e
+                );
+            }
+
+            throw $e;
+        }
 
         if ($result) {
             $lastId = self::database()->getPdo()->lastInsertId();
@@ -1045,7 +1059,19 @@ abstract class Model
 
         $this->beforeCreate();
 
-        $result = new QueryBuilder(self::database(), $table)->insert($this->prepareForStorage($data));
+        try {
+            $result = new QueryBuilder(self::database(), $table)->insert($this->prepareForStorage($data));
+        } catch (\PDOException $e) {
+            if (str_starts_with((string) $e->getCode(), '23')) {
+                throw new DuplicateKeyException(
+                    "Duplicate key violation in table '$table'.",
+                    0,
+                    $e
+                );
+            }
+
+            throw $e;
+        }
 
         if ($result) {
             $this->syncOriginal();
@@ -1255,17 +1281,21 @@ abstract class Model
      */
     private function normalizeForComparison(string $key, mixed $value): mixed
     {
-        if (!array_key_exists($key, static::$casts) || $value === null) {
+        if ($value === null) {
             return $value;
         }
 
-        $cast = static::$casts[$key];
+        if (array_key_exists($key, static::$casts)) {
+            $cast = static::$casts[$key];
 
-        if (is_a($cast, CastableInterface::class, true) && $value instanceof CastableInterface) {
-            return $value->castTo();
+            if (is_a($cast, CastableInterface::class, true) && $value instanceof CastableInterface) {
+                return $value->castTo();
+            }
         }
 
-        if (in_array($cast, ['array', 'json'], true) && is_array($value)) {
+        // Normalize arrays to JSON regardless of cast declaration so that
+        // a PHP array and its JSON-string round-trip compare as equal.
+        if (is_array($value)) {
             return json_encode($value);
         }
 

@@ -259,4 +259,42 @@ final class PaginatorTest extends TestCase
         $p = new Paginator([], 0, 15, 1);
         $this->assertNull($p->to());
     }
+
+    // ── constructor validation ────────────────────────────────────────────────
+
+    /**
+     * @return void
+     */
+    public function test_constructor_throws_when_page_is_zero(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new Paginator([], 0, 15, 0);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_constructor_throws_when_page_is_negative(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new Paginator([], 0, 15, -1);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_constructor_throws_when_per_page_is_zero(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new Paginator([], 0, 0, 1);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_constructor_throws_when_per_page_is_negative(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new Paginator([], 0, -1, 1);
+    }
 }

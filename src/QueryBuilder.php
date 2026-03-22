@@ -668,6 +668,10 @@ final class QueryBuilder
      */
     public function paginate(int $perPage = 15, int $page = 1): Paginator
     {
+        if ($perPage < 1) {
+            throw new \InvalidArgumentException("perPage must be >= 1, got $perPage.");
+        }
+
         $total = $this->count();
         $items = $this->limit($perPage)->offset(($page - 1) * $perPage)->get();
 

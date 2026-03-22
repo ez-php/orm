@@ -28,6 +28,13 @@ final readonly class Paginator
         private int $perPage,
         private int $currentPage,
     ) {
+        if ($perPage < 1) {
+            throw new \InvalidArgumentException("perPage must be >= 1, got $perPage.");
+        }
+
+        if ($currentPage < 1) {
+            throw new \InvalidArgumentException("currentPage must be >= 1, got $currentPage.");
+        }
     }
 
     /**

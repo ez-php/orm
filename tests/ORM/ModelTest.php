@@ -332,6 +332,34 @@ final class CompositePkModel extends Model
 }
 
 // ---------------------------------------------------------------------------
+// Bug 15: dirty tracking without cast + Bug 16: DuplicateKeyException
+// ---------------------------------------------------------------------------
+
+/**
+ * @property int    $id
+ * @property string|null $meta
+ */
+final class UncastedItem extends Model
+{
+    protected static string $table = 'uncasted_items';
+
+    /** @var list<string> */
+    protected static array $fillable = ['meta'];
+}
+
+/**
+ * @property int    $id
+ * @property string $slug
+ */
+final class SlugItem extends Model
+{
+    protected static string $table = 'slug_items';
+
+    /** @var list<string> */
+    protected static array $fillable = ['slug'];
+}
+
+// ---------------------------------------------------------------------------
 // Feature 10: Model Events helpers
 // ---------------------------------------------------------------------------
 
@@ -448,6 +476,7 @@ final class PivotTestUser extends Model
 #[UsesClass(BelongsTo::class)]
 #[UsesClass(BelongsToMany::class)]
 #[UsesClass(PivotModel::class)]
+#[UsesClass(\EzPhp\Orm\DuplicateKeyException::class)]
 final class ModelTest extends ModelTestCase
 {
     /**
@@ -499,6 +528,12 @@ final class ModelTest extends ModelTestCase
 
         // Feature 8: Composite PK
         $this->db->query('CREATE TABLE composite_pk (tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (tenant_id, user_id))');
+
+        // Bug 15: dirty tracking for uncasted arrays
+        $this->db->query('CREATE TABLE uncasted_items (id INTEGER PRIMARY KEY AUTOINCREMENT, meta TEXT NULL)');
+
+        // Bug 16: DuplicateKeyException
+        $this->db->query('CREATE TABLE slug_items (id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE)');
     }
 
     /**
@@ -993,6 +1028,25 @@ final class ModelTest extends ModelTestCase
         $this->assertTrue($model->isDirty('data'));
     }
 
+    /**
+     * @return void
+     */
+    public function test_dirty_tracking_normalizes_array_without_cast_declaration(): void
+    {
+        $this->db->query("INSERT INTO uncasted_items (meta) VALUES ('{\"key\":\"value\"}')");
+
+        $model = UncastedItem::find(1);
+        $this->assertNotNull($model);
+
+        // Same logical value set as an array — should not be dirty after the fix
+        $model->setAttribute('meta', ['key' => 'value']);
+        $this->assertFalse($model->isDirty('meta'), 'Array without cast should not be dirty when it matches the stored JSON');
+
+        // Different value must still be dirty
+        $model->setAttribute('meta', ['key' => 'changed']);
+        $this->assertTrue($model->isDirty('meta'));
+    }
+
     // =========================================================================
     // Hooks
     // =========================================================================
@@ -1122,6 +1176,42 @@ final class ModelTest extends ModelTestCase
         $user->forceDelete();
 
         $this->assertCount(1, SoftUser::withTrashed()->get());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_trashed_returns_false_for_mysql_zero_date(): void
+    {
+        $this->db->query("INSERT INTO soft_users (name, deleted_at) VALUES ('ZeroDate', '0000-00-00 00:00:00')");
+
+        $user = SoftUser::withTrashed()->orderBy('id', 'desc')->first();
+        $this->assertNotNull($user);
+
+        // Zero-date must not be treated as a real soft-delete
+        $this->assertFalse($user->trashed());
+    }
+
+    /**
+     * @return void
+     */
+    public function test_duplicate_key_on_regular_insert_throws_duplicate_key_exception(): void
+    {
+        SlugItem::create(['slug' => 'hello']);
+
+        $this->expectException(\EzPhp\Orm\DuplicateKeyException::class);
+        SlugItem::create(['slug' => 'hello']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_duplicate_key_on_composite_insert_throws_duplicate_key_exception(): void
+    {
+        CompositePkModel::create(['tenant_id' => 99, 'user_id' => 99, 'name' => 'first']);
+
+        $this->expectException(\EzPhp\Orm\DuplicateKeyException::class);
+        CompositePkModel::create(['tenant_id' => 99, 'user_id' => 99, 'name' => 'second']);
     }
 
     // =========================================================================

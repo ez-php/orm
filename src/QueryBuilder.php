@@ -426,6 +426,11 @@ final class QueryBuilder
     }
 
     /**
+     * Execute the query and return the first row, or null when no row matches.
+     *
+     * Missing resource convention: returns null — never throws. Always check the
+     * return value before accessing columns.
+     *
      * @return array<string, mixed>|null
      */
     public function first(): ?array

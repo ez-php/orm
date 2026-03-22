@@ -23,8 +23,21 @@ abstract class Model
 {
     /**
      * Per-class database registry. Keyed by class-string (e.g. Model::class or User::class).
-     * Allows separate DB connections for different model classes without relying on
-     * PHP's unintuitive late-static-binding static property write behaviour.
+     *
+     * Why not a plain `protected static ?DatabaseInterface $db = null`?
+     * PHP static properties are defined once on the class that declares them. Writing
+     * `User::$db = $conn` via late-static-binding does NOT create a per-subclass slot —
+     * it writes to the single property slot on `Model`, so every subclass immediately sees
+     * the same value. Keying an array on `static::class` gives true per-class isolation:
+     * `User::setDatabase($conn)` only affects User, never Post or any other sibling.
+     *
+     * Resolution order (see database()):
+     *   1. Entry for the concrete class (e.g. User::class) — per-model override
+     *   2. Entry for Model::class — the shared default wired by ModelServiceProvider::boot()
+     *   3. Neither found → throws EzPhpException
+     *
+     * Tests: always call resetDatabase() (or use ModelTestCase, which calls it in tearDown)
+     * after any test that sets a custom connection to prevent leaks across test classes.
      *
      * @var array<class-string, DatabaseInterface>
      */

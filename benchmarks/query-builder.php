@@ -46,7 +46,7 @@ $start = hrtime(true);
 for ($i = 0; $i < ITERATIONS; $i++) {
     $qb = (new QueryBuilder($db, 'users'))
         ->select('u.id', 'u.name', 'u.email', 'p.bio')
-        ->leftJoin('profiles p', 'p.user_id = u.id')
+        ->leftJoin('profiles p', 'p.user_id', '=', 'u.id')
         ->where('u.active', '=', 1)
         ->where('u.age', '>', 18)
         ->whereNotNull('u.email')

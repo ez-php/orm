@@ -135,10 +135,21 @@ final class QueryBuilderTest extends TestCase
      */
     public function test_offset_skips_rows(): void
     {
-        $rows = (new QueryBuilder($this->db, 'users'))->orderBy('id')->offset(2)->get();
+        $rows = (new QueryBuilder($this->db, 'users'))->orderBy('id')->limit(10)->offset(2)->get();
 
         $this->assertCount(1, $rows);
         $this->assertSame('Charlie', $rows[0]['name']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_offset_without_limit_throws_invalid_argument_exception(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('OFFSET requires an explicit LIMIT');
+
+        (new QueryBuilder($this->db, 'users'))->offset(5)->get();
     }
 
     /**

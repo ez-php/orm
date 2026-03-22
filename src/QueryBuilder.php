@@ -1001,7 +1001,9 @@ final class QueryBuilder
         if ($this->limitValue !== null) {
             $sql .= ' LIMIT ' . $this->limitValue;
         } elseif ($this->offsetValue !== null) {
-            $sql .= ' LIMIT ' . PHP_INT_MAX;
+            throw new \InvalidArgumentException(
+                'OFFSET requires an explicit LIMIT — call limit() before offset().',
+            );
         }
 
         if ($this->offsetValue !== null) {

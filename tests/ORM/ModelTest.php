@@ -655,7 +655,7 @@ final class ModelTest extends ModelTestCase
      */
     public function test_where_offset_works(): void
     {
-        $users = TestUser::where('active', 1)->orderBy('id')->offset(1)->get();
+        $users = TestUser::where('active', 1)->orderBy('id')->limit(10)->offset(1)->get();
 
         $this->assertCount(1, $users);
         $this->assertSame('Charlie', $users[0]->getAttribute('name'));

@@ -219,7 +219,7 @@ Fluent builder for raw SQL. All wither methods return a clone — the original i
 
 **`where(column, operatorOrValue, value = null)`** — two-argument form defaults operator to `=`; three-argument form validates the operator against the allowed list and throws `InvalidArgumentException` on invalid operators.
 
-**OFFSET without LIMIT** — emits `LIMIT PHP_INT_MAX OFFSET n` so MySQL/SQLite accept it.
+**OFFSET without LIMIT** — throws `InvalidArgumentException`; always call `limit()` before `offset()`.
 
 **Execution methods:**
 

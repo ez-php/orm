@@ -18,24 +18,20 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use EzPhp\Database\Database;
 use EzPhp\Orm\QueryBuilder;
 
 const ITERATIONS = 5000;
 const THRESHOLD_MS = 2.0; // per-build upper bound in milliseconds
 
-// ── Setup a minimal PDO stub ──────────────────────────────────────────────────
-// We only need toSql() / getBindings() for the benchmark — no real DB calls.
+// ── Setup a DatabaseInterface instance backed by SQLite in-memory ─────────────
+// QueryBuilder construction and clause chaining are pure CPU operations.
 
-/**
- * We can use a real SQLite in-memory PDO to instantiate QueryBuilder.
- * QueryBuilder construction and clause chaining are pure CPU operations.
- */
-$pdo = new PDO('sqlite::memory:');
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$db = new Database('sqlite::memory:', '', '');
 
 // ── Warm-up ───────────────────────────────────────────────────────────────────
 
-$qb = new QueryBuilder($pdo, 'users');
+$qb = new QueryBuilder($db, 'users');
 $qb->select('id', 'name', 'email')
    ->where('active', '=', 1)
    ->where('age', '>', 18)
@@ -48,7 +44,7 @@ $qb->select('id', 'name', 'email')
 $start = hrtime(true);
 
 for ($i = 0; $i < ITERATIONS; $i++) {
-    $qb = (new QueryBuilder($pdo, 'users'))
+    $qb = (new QueryBuilder($db, 'users'))
         ->select('u.id', 'u.name', 'u.email', 'p.bio')
         ->leftJoin('profiles p', 'p.user_id = u.id')
         ->where('u.active', '=', 1)

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests;
 
-use EzPhp\Orm\Model;
-use EzPhp\Orm\ModelQueryBuilder;
+use EzPhp\Orm\AbstractRepository;
+use EzPhp\Orm\Entity;
+use EzPhp\Orm\EntityQueryBuilder;
+use EzPhp\Orm\Hydrator;
 use EzPhp\Orm\Paginator;
 use EzPhp\Orm\QueryBuilder;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -15,26 +17,32 @@ use PHPUnit\Framework\Attributes\UsesClass;
  * Class PaginationTest
  *
  * Integration tests for QueryBuilder::paginate() / chunk() and the mirrored
- * methods on ModelQueryBuilder. Uses an in-memory SQLite database seeded with
+ * methods on EntityQueryBuilder. Uses an in-memory SQLite database seeded with
  * 10 rows so pagination arithmetic is easy to verify.
  *
  * @package Tests
  */
 #[CoversClass(QueryBuilder::class)]
-#[CoversClass(ModelQueryBuilder::class)]
+#[CoversClass(EntityQueryBuilder::class)]
 #[UsesClass(Paginator::class)]
-#[UsesClass(Model::class)]
-final class PaginationTest extends ModelTestCase
+#[UsesClass(Entity::class)]
+#[UsesClass(AbstractRepository::class)]
+#[UsesClass(Hydrator::class)]
+final class PaginationTest extends RepositoryTestCase
 {
+    private PaginationItemRepository $items;
+
     /**
      * @return void
      */
     protected function setUpDatabase(): void
     {
-        $this->db->query('CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)');
+        $this->exec('CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)');
         for ($i = 1; $i <= 10; $i++) {
-            $this->db->query("INSERT INTO items (name) VALUES ('item-$i')");
+            $this->exec("INSERT INTO items (name) VALUES ('item-$i')");
         }
+
+        $this->items = new PaginationItemRepository($this->db, $this->hydrator);
     }
 
     // ── QueryBuilder::paginate() ──────────────────────────────────────────────
@@ -175,7 +183,7 @@ final class PaginationTest extends ModelTestCase
      */
     public function test_qb_chunk_on_empty_table_calls_no_callback(): void
     {
-        $this->db->query('DELETE FROM items');
+        $this->exec('DELETE FROM items');
         $calls = 0;
         (new QueryBuilder($this->db, 'items'))->chunk(10, function (array $rows) use (&$calls): void {
             $calls++;
@@ -197,14 +205,14 @@ final class PaginationTest extends ModelTestCase
         $this->assertCount(10, $collected);
     }
 
-    // ── ModelQueryBuilder::paginate() ────────────────────────────────────────
+    // ── EntityQueryBuilder::paginate() ───────────────────────────────────────
 
     /**
      * @return void
      */
-    public function test_mqb_paginate_returns_paginator_of_models(): void
+    public function test_eqb_paginate_returns_paginator_of_entities(): void
     {
-        $p = PaginationItem::query()->paginate(3, 1);
+        $p = $this->items->query()->paginate(3, 1);
         $this->assertInstanceOf(Paginator::class, $p);
         $this->assertInstanceOf(PaginationItem::class, $p->items()[0]);
     }
@@ -212,9 +220,9 @@ final class PaginationTest extends ModelTestCase
     /**
      * @return void
      */
-    public function test_mqb_paginate_total_and_last_page(): void
+    public function test_eqb_paginate_total_and_last_page(): void
     {
-        $p = PaginationItem::query()->paginate(3, 1);
+        $p = $this->items->query()->paginate(3, 1);
         $this->assertSame(10, $p->total());
         $this->assertSame(4, $p->lastPage());
     }
@@ -222,24 +230,24 @@ final class PaginationTest extends ModelTestCase
     /**
      * @return void
      */
-    public function test_mqb_paginate_second_page_hydrates_models(): void
+    public function test_eqb_paginate_second_page_hydrates_entities(): void
     {
-        $p = PaginationItem::query()->paginate(4, 2);
+        $p = $this->items->query()->paginate(4, 2);
         $this->assertCount(4, $p->items());
         $this->assertSame('item-5', $p->items()[0]->name);
     }
 
-    // ── ModelQueryBuilder::chunk() ───────────────────────────────────────────
+    // ── EntityQueryBuilder::chunk() ──────────────────────────────────────────
 
     /**
      * @return void
      */
-    public function test_mqb_chunk_visits_all_models(): void
+    public function test_eqb_chunk_visits_all_entities(): void
     {
         $names = [];
-        PaginationItem::query()->chunk(4, function (array $models) use (&$names): void {
-            foreach ($models as $model) {
-                $names[] = $model->name;
+        $this->items->query()->chunk(4, function (array $entities) use (&$names): void {
+            foreach ($entities as $entity) {
+                $names[] = $entity->name;
             }
         });
 
@@ -249,10 +257,10 @@ final class PaginationTest extends ModelTestCase
     /**
      * @return void
      */
-    public function test_mqb_chunk_calls_callback_per_chunk(): void
+    public function test_eqb_chunk_calls_callback_per_chunk(): void
     {
         $calls = 0;
-        PaginationItem::query()->chunk(4, function (array $models) use (&$calls): void {
+        $this->items->query()->chunk(4, function (array $entities) use (&$calls): void {
             $calls++;
         });
 
@@ -281,16 +289,27 @@ final class PaginationTest extends ModelTestCase
 }
 
 /**
- * Class PaginationItem
- *
- * Test model stub mapped to the `items` table.
- *
- * @package Tests
+ * @internal Test entity stub mapped to the `items` table.
  *
  * @property string $name
  */
-class PaginationItem extends Model
+final class PaginationItem extends Entity
 {
-    /** @var string */
     protected static string $table = 'items';
+
+    /** @var list<string> */
+    protected static array $fillable = ['name'];
+}
+
+/**
+ * @internal
+ *
+ * @extends AbstractRepository<PaginationItem>
+ */
+final class PaginationItemRepository extends AbstractRepository
+{
+    protected function entityClass(): string
+    {
+        return PaginationItem::class;
+    }
 }

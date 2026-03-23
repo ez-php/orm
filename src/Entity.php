@@ -54,7 +54,7 @@ abstract class Entity
      *
      * Resolution order (see database()):
      *   1. Entry for the concrete class (e.g. UserEntity::class) — per-entity override
-     *   2. Entry for Entity::class — the shared default wired by ModelServiceProvider::boot()
+     *   2. Entry for Entity::class — the shared default wired by EntityServiceProvider::boot()
      *   3. Neither found → throws EzPhpException
      *
      * Tests: always call resetDatabase() in tearDown to prevent leaks across test classes.

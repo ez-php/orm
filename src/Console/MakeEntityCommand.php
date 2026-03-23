@@ -7,19 +7,16 @@ namespace EzPhp\Orm\Console;
 use EzPhp\Console\CommandInterface;
 
 /**
- * Class MakeModelCommand
+ * Class MakeEntityCommand
  *
- * @deprecated Use make:entity + make:repository (Data Mapper pattern) instead.
- *             MakeModelCommand will be removed in a future major version.
+ * Scaffolds a new Data Mapper entity class in app/Entities/.
  *
  * @package EzPhp\Orm\Console
  */
-final readonly class MakeModelCommand implements CommandInterface
+final readonly class MakeEntityCommand implements CommandInterface
 {
     /**
-     * MakeModelCommand Constructor
-     *
-     * @param string $srcPath
+     * @param string $srcPath  Absolute path to the application src/ directory
      */
     public function __construct(private string $srcPath)
     {
@@ -30,7 +27,7 @@ final readonly class MakeModelCommand implements CommandInterface
      */
     public function getName(): string
     {
-        return 'make:model';
+        return 'make:entity';
     }
 
     /**
@@ -38,7 +35,7 @@ final readonly class MakeModelCommand implements CommandInterface
      */
     public function getDescription(): string
     {
-        return 'Create a new ORM model class (deprecated — use make:entity instead)';
+        return 'Create a new Data Mapper entity class';
     }
 
     /**
@@ -46,7 +43,7 @@ final readonly class MakeModelCommand implements CommandInterface
      */
     public function getHelp(): string
     {
-        return 'Usage: ez make:model <ClassName>';
+        return 'Usage: ez make:entity <ClassName>';
     }
 
     /**
@@ -59,11 +56,12 @@ final readonly class MakeModelCommand implements CommandInterface
         $name = $args[0] ?? null;
 
         if ($name === null || !preg_match('/^[A-Za-z][A-Za-z0-9]*$/', $name)) {
-            fwrite(STDERR, "Usage: ez make:model <ClassName>\n");
+            fwrite(STDERR, "Usage: ez make:entity <ClassName>\n");
+
             return 1;
         }
 
-        $dir = $this->srcPath . DIRECTORY_SEPARATOR . 'Models';
+        $dir = $this->srcPath . DIRECTORY_SEPARATOR . 'Entities';
         $filename = "$name.php";
         $fullPath = $dir . DIRECTORY_SEPARATOR . $filename;
 
@@ -72,16 +70,18 @@ final readonly class MakeModelCommand implements CommandInterface
         }
 
         if (file_exists($fullPath)) {
-            fwrite(STDERR, "Model already exists: $filename\n");
+            fwrite(STDERR, "Entity already exists: $filename\n");
+
             return 1;
         }
 
         if (file_put_contents($fullPath, $this->stub($name)) === false) {
-            fwrite(STDERR, "Failed to create model: $filename\n");
+            fwrite(STDERR, "Failed to create entity: $filename\n");
+
             return 1;
         }
 
-        echo "Created: src/Models/$filename\n";
+        echo "Created: src/Entities/$filename\n";
 
         return 0;
     }
@@ -98,11 +98,11 @@ final readonly class MakeModelCommand implements CommandInterface
 
             declare(strict_types=1);
 
-            namespace App\\Models;
+            namespace App\\Entities;
 
-            use EzPhp\\Orm\\Model;
+            use EzPhp\\Orm\\Entity;
 
-            final class $name extends Model
+            final class $name extends Entity
             {
                 protected static string \$table = '';
 

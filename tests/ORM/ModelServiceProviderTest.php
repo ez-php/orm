@@ -6,6 +6,9 @@ namespace Tests\ORM;
 
 use EzPhp\Application\Application;
 use EzPhp\Contracts\EzPhpException;
+use EzPhp\Orm\AbstractRepository;
+use EzPhp\Orm\Entity;
+use EzPhp\Orm\Hydrator;
 use EzPhp\Orm\Model;
 use EzPhp\Orm\ModelQueryBuilder;
 use EzPhp\Orm\ModelServiceProvider;
@@ -21,6 +24,9 @@ use Throwable;
  * @package Tests\Database\ORM
  */
 #[CoversClass(ModelServiceProvider::class)]
+#[UsesClass(AbstractRepository::class)]
+#[UsesClass(Entity::class)]
+#[UsesClass(Hydrator::class)]
 #[UsesClass(Model::class)]
 #[UsesClass(ModelQueryBuilder::class)]
 #[UsesClass(QueryBuilder::class)]
@@ -42,6 +48,7 @@ final class ModelServiceProviderTest extends ApplicationTestCase
     protected function tearDown(): void
     {
         Model::resetDatabase();
+        Entity::resetDatabase();
         parent::tearDown();
     }
 
@@ -65,6 +72,60 @@ final class ModelServiceProviderTest extends ApplicationTestCase
         }
 
         $this->assertFalse($threwNoDatabaseException, 'ModelServiceProvider should set database on Model during boot.');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_boot_sets_database_on_entity(): void
+    {
+        // ModelServiceProvider::boot() must also wire Entity so that AbstractRepository
+        // instances created without an explicit DatabaseInterface can resolve the connection.
+        $threwNoDatabaseException = false;
+
+        try {
+            Entity::database();
+        } catch (EzPhpException $e) {
+            if (str_contains($e->getMessage(), 'No database resolver set')) {
+                $threwNoDatabaseException = true;
+            }
+        }
+
+        $this->assertFalse($threwNoDatabaseException, 'ModelServiceProvider should set database on Entity during boot.');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_abstract_repository_uses_entity_database_when_no_db_injected(): void
+    {
+        // When AbstractRepository is instantiated without an explicit DatabaseInterface,
+        // it must fall back to Entity::database() wired by ModelServiceProvider.
+        $repo = new TestBootEntityRepository();
+
+        // The repository was created without throwing — Entity::database() was resolved.
+        $this->assertInstanceOf(AbstractRepository::class, $repo);
+    }
+}
+
+/**
+ * @internal Test entity for ModelServiceProviderTest
+ */
+final class TestBootEntity extends Entity
+{
+    protected static string $table = 'test_boot_entities';
+}
+
+/**
+ * @internal Test repository for ModelServiceProviderTest
+ *
+ * @extends AbstractRepository<TestBootEntity>
+ */
+final class TestBootEntityRepository extends AbstractRepository
+{
+    protected function entityClass(): string
+    {
+        return TestBootEntity::class;
     }
 }
 

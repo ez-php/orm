@@ -9,6 +9,8 @@ use EzPhp\Orm\Relations\Relation;
 /**
  * Class ModelQueryBuilder
  *
+ * @deprecated Use EntityQueryBuilder instead.
+ *
  * @template TModel of Model
  *
  * @package EzPhp\Orm

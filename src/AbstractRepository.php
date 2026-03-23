@@ -34,6 +34,10 @@ use SplObjectStorage;
  */
 abstract class AbstractRepository implements RepositoryInterface
 {
+    protected readonly DatabaseInterface $db;
+
+    protected readonly Hydrator $hydrator;
+
     /**
      * Attribute snapshots for dirty tracking.
      * Keyed by entity object identity; value is the attributes array at load time.
@@ -43,13 +47,16 @@ abstract class AbstractRepository implements RepositoryInterface
     private SplObjectStorage $snapshots;
 
     /**
-     * @param DatabaseInterface $db
-     * @param Hydrator          $hydrator
+     * @param DatabaseInterface|null $db       Explicit connection; falls back to Entity::database() when null.
+     * @param Hydrator|null          $hydrator Custom hydrator; defaults to a generic Hydrator instance.
      */
     public function __construct(
-        protected readonly DatabaseInterface $db,
-        protected readonly Hydrator $hydrator,
+        ?DatabaseInterface $db = null,
+        ?Hydrator $hydrator = null,
     ) {
+        $this->db = $db ?? Entity::database();
+        $this->hydrator = $hydrator ?? new Hydrator();
+
         /** @var SplObjectStorage<Entity, array<string, mixed>> $snapshots */
         $snapshots = new SplObjectStorage();
         $this->snapshots = $snapshots;

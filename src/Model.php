@@ -15,6 +15,8 @@ use ReflectionClass;
 /**
  * Class Model
  *
+ * @deprecated Use Entity + AbstractRepository instead.
+ *
  * @phpstan-consistent-constructor
  *
  * @package EzPhp\Orm

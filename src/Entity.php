@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
+use EzPhp\Contracts\DatabaseInterface;
+use EzPhp\Contracts\EzPhpException;
 use ReflectionClass;
 
 /**
@@ -45,6 +47,67 @@ abstract class Entity
     protected static bool $timestamps = false;
 
     protected static bool $softDeletes = false;
+
+    /**
+     * Per-class database registry used by AbstractRepository when no explicit DatabaseInterface
+     * is injected via constructor. Keyed by class-string (e.g. Entity::class or User::class).
+     *
+     * Resolution order (see database()):
+     *   1. Entry for the concrete class (e.g. UserEntity::class) — per-entity override
+     *   2. Entry for Entity::class — the shared default wired by ModelServiceProvider::boot()
+     *   3. Neither found → throws EzPhpException
+     *
+     * Tests: always call resetDatabase() in tearDown to prevent leaks across test classes.
+     *
+     * @var array<class-string, DatabaseInterface>
+     */
+    private static array $databases = [];
+
+    /**
+     * Register a DatabaseInterface instance for this entity class.
+     * When called as Entity::setDatabase($db) it acts as the shared default for all repositories.
+     * When called as UserEntity::setDatabase($db) it registers a connection specific to UserEntity.
+     *
+     * @param DatabaseInterface $db
+     *
+     * @return void
+     */
+    public static function setDatabase(DatabaseInterface $db): void
+    {
+        self::$databases[static::class] = $db;
+    }
+
+    /**
+     * Remove the DatabaseInterface registration for this entity class.
+     *
+     * @return void
+     */
+    public static function resetDatabase(): void
+    {
+        unset(self::$databases[static::class]);
+    }
+
+    /**
+     * Resolve the DatabaseInterface for this entity class.
+     * Falls back to the Entity::class entry (the shared default).
+     *
+     * @return DatabaseInterface
+     * @throws EzPhpException
+     */
+    public static function database(): DatabaseInterface
+    {
+        $class = static::class;
+
+        if (isset(self::$databases[$class])) {
+            return self::$databases[$class];
+        }
+
+        if (isset(self::$databases[self::class])) {
+            return self::$databases[self::class];
+        }
+
+        throw new EzPhpException("No database resolver set for [{$class}]. Call Entity::setDatabase() or inject DatabaseInterface into the repository constructor.");
+    }
 
     /**
      * @var array<string, mixed>

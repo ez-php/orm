@@ -21,5 +21,6 @@ final class ModelServiceProvider extends ServiceProvider
     {
         $db = $this->app->make(DatabaseInterface::class);
         Model::setDatabase($db);
+        Entity::setDatabase($db);
     }
 }

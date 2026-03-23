@@ -154,4 +154,48 @@ final readonly class Paginator
     {
         return $this->lastItem();
     }
+
+    /**
+     * Build a URL for the given page number.
+     *
+     * Appends `?param=page` (or `&param=page` when the base URL already
+     * contains a query string).
+     *
+     * @param string $baseUrl Base URL without the page parameter.
+     * @param int    $page    Target page number.
+     * @param string $param   Query parameter name (default: 'page').
+     *
+     * @return string
+     */
+    public function urlForPage(string $baseUrl, int $page, string $param = 'page'): string
+    {
+        $separator = str_contains($baseUrl, '?') ? '&' : '?';
+        return $baseUrl . $separator . urlencode($param) . '=' . $page;
+    }
+
+    /**
+     * Return prev/next and full page URL set for rendering pagination controls.
+     *
+     * @param string $baseUrl Base URL without the page parameter.
+     * @param string $param   Query parameter name (default: 'page').
+     *
+     * @return array{prev: string|null, next: string|null, pages: list<string>}
+     */
+    public function links(string $baseUrl, string $param = 'page'): array
+    {
+        $prev = $this->currentPage > 1
+            ? $this->urlForPage($baseUrl, $this->currentPage - 1, $param)
+            : null;
+
+        $next = $this->hasMorePages()
+            ? $this->urlForPage($baseUrl, $this->currentPage + 1, $param)
+            : null;
+
+        $pages = [];
+        for ($i = 1; $i <= $this->lastPage(); $i++) {
+            $pages[] = $this->urlForPage($baseUrl, $i, $param);
+        }
+
+        return ['prev' => $prev, 'next' => $next, 'pages' => $pages];
+    }
 }

@@ -280,6 +280,90 @@ final class PaginatorTest extends TestCase
         new Paginator([], 0, 15, -1);
     }
 
+    // ── urlForPage ─────────────────────────────────────────────────────────────
+
+    /**
+     * @return void
+     */
+    public function test_urlForPage_appends_query_param(): void
+    {
+        $p = new Paginator([], 30, 10, 2);
+        $this->assertSame('/posts?page=3', $p->urlForPage('/posts', 3));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_urlForPage_uses_ampersand_when_query_string_present(): void
+    {
+        $p = new Paginator([], 30, 10, 1);
+        $this->assertSame('/posts?q=foo&page=2', $p->urlForPage('/posts?q=foo', 2));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_urlForPage_uses_custom_param_name(): void
+    {
+        $p = new Paginator([], 30, 10, 1);
+        $this->assertSame('/posts?p=2', $p->urlForPage('/posts', 2, 'p'));
+    }
+
+    // ── links ──────────────────────────────────────────────────────────────────
+
+    /**
+     * @return void
+     */
+    public function test_links_returns_correct_structure_for_middle_page(): void
+    {
+        $p = new Paginator([], 30, 10, 2);
+        $links = $p->links('/posts');
+
+        $this->assertSame('/posts?page=1', $links['prev']);
+        $this->assertSame('/posts?page=3', $links['next']);
+        $this->assertCount(3, $links['pages']);
+        $this->assertSame('/posts?page=1', $links['pages'][0]);
+        $this->assertSame('/posts?page=2', $links['pages'][1]);
+        $this->assertSame('/posts?page=3', $links['pages'][2]);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_links_prev_is_null_on_first_page(): void
+    {
+        $p = new Paginator([], 20, 10, 1);
+        $links = $p->links('/posts');
+
+        $this->assertNull($links['prev']);
+        $this->assertSame('/posts?page=2', $links['next']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_links_next_is_null_on_last_page(): void
+    {
+        $p = new Paginator([], 20, 10, 2);
+        $links = $p->links('/posts');
+
+        $this->assertSame('/posts?page=1', $links['prev']);
+        $this->assertNull($links['next']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_links_single_page_has_no_prev_or_next(): void
+    {
+        $p = new Paginator([], 5, 10, 1);
+        $links = $p->links('/posts');
+
+        $this->assertNull($links['prev']);
+        $this->assertNull($links['next']);
+        $this->assertCount(1, $links['pages']);
+    }
+
     /**
      * @return void
      */

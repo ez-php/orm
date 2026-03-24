@@ -243,7 +243,7 @@ abstract class AbstractRepository implements RepositoryInterface
     /**
      * Count entities grouped by a column value.
      *
-     * Used internally by EntityRelation::countFor() implementations.
+     * @internal Used by EntityRelation::countFor() implementations; not part of the public repository API.
      *
      * @param string      $column
      * @param list<mixed> $ids
@@ -297,6 +297,8 @@ abstract class AbstractRepository implements RepositoryInterface
      * Intended for use by relation classes that build entities outside the
      * normal query path (e.g. EntityBelongsToMany which issues raw SQL).
      *
+     * @internal Called by relation classes; not part of the public repository API.
+     *
      * @param array<string, mixed> $row
      *
      * @return T
@@ -312,6 +314,8 @@ abstract class AbstractRepository implements RepositoryInterface
      *
      * Called by EntityQueryBuilder::hydrate() so that all entities returned
      * through the main query path are automatically tracked.
+     *
+     * @internal Called by EntityQueryBuilder; not part of the public repository API.
      *
      * @param array<string, mixed> $row
      *

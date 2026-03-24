@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Entity;
 
+use EzPhp\Contracts\EzPhpException;
 use EzPhp\Orm\CastableInterface;
 use EzPhp\Orm\Entity;
 use PHPUnit\Framework\Attributes\CoversClass;
+use Tests\PdoDatabase;
 use Tests\TestCase;
 
 /**
@@ -352,5 +354,71 @@ final class EntityTest extends TestCase
         };
 
         self::assertSame(['name', 'email'], $entity::getFillable());
+    }
+
+    // ─── tearDown ─────────────────────────────────────────────────────────────
+
+    protected function tearDown(): void
+    {
+        Entity::resetDatabase();
+        parent::tearDown();
+    }
+
+    // ─── Database registry ────────────────────────────────────────────────────
+
+    public function testSetDatabaseAndDatabaseReturnsRegisteredInstance(): void
+    {
+        $db = new PdoDatabase('sqlite::memory:');
+
+        Entity::setDatabase($db);
+
+        self::assertSame($db, Entity::database());
+    }
+
+    public function testResetDatabaseClearsRegistration(): void
+    {
+        $db = new PdoDatabase('sqlite::memory:');
+        Entity::setDatabase($db);
+        Entity::resetDatabase();
+
+        $this->expectException(EzPhpException::class);
+        Entity::database();
+    }
+
+    public function testDatabaseFallsBackToBaseClassRegistration(): void
+    {
+        $db = new PdoDatabase('sqlite::memory:');
+
+        // Register on base Entity class — subclass should fall back to it
+        Entity::setDatabase($db);
+
+        $sub = new class () extends Entity {};
+
+        self::assertSame($db, $sub::database());
+    }
+
+    // ─── Static schema helpers ────────────────────────────────────────────────
+
+    public function testGetTableReturnsConfiguredTableName(): void
+    {
+        $entity = new class () extends Entity {
+            protected static string $table = 'my_items';
+        };
+
+        self::assertSame('my_items', $entity::getTable());
+    }
+
+    public function testGetPrimaryKeyReturnsDefaultId(): void
+    {
+        self::assertSame('id', BasicTestEntity::getPrimaryKey());
+    }
+
+    public function testGetPrimaryKeyReturnsCustomKey(): void
+    {
+        $entity = new class () extends Entity {
+            protected static string|array $primaryKey = 'uuid';
+        };
+
+        self::assertSame('uuid', $entity::getPrimaryKey());
     }
 }

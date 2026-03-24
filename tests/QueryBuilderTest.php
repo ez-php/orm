@@ -659,4 +659,38 @@ final class QueryBuilderTest extends TestCase
 
         $this->assertCount(0, $rows);
     }
+
+    // =========================================================================
+    // Feature 14: whereExists / whereNotExists
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_where_exists_returns_rows_with_matching_subquery(): void
+    {
+        // Alice (id=1) and Bob (id=2) have orders; Charlie (id=3) does not
+        $rows = (new QueryBuilder($this->db, 'users'))
+            ->whereExists('SELECT 1 FROM orders WHERE orders.user_id = users.id')
+            ->get();
+
+        $this->assertCount(2, $rows);
+        $names = array_column($rows, 'name');
+        $this->assertContains('Alice', $names);
+        $this->assertContains('Bob', $names);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_where_not_exists_excludes_rows_with_matching_subquery(): void
+    {
+        // Only Charlie (id=3) has no orders
+        $rows = (new QueryBuilder($this->db, 'users'))
+            ->whereNotExists('SELECT 1 FROM orders WHERE orders.user_id = users.id')
+            ->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Charlie', $rows[0]['name']);
+    }
 }

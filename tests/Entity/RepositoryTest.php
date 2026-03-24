@@ -715,4 +715,109 @@ final class RepositoryTest extends RepositoryTestCase
         self::assertInstanceOf(UserEntity::class, $entity);
         self::assertSame('Ghost', $entity->getAttribute('name'));
     }
+
+    // ─── Relation key accessors ───────────────────────────────────────────────
+
+    public function testHasManyGetForeignKeyAndLocalKey(): void
+    {
+        $user = $this->users->hydrateOne(['id' => 1, 'name' => 'Alice']);
+        $relation = $this->users->posts($user);
+
+        self::assertSame('user_id', $relation->getForeignKey());
+        self::assertSame('id', $relation->getLocalKey());
+    }
+
+    public function testHasOneGetForeignKeyAndLocalKey(): void
+    {
+        $user = $this->users->hydrateOne(['id' => 1, 'name' => 'Alice']);
+        $relation = $this->users->profile($user);
+
+        self::assertSame('user_id', $relation->getForeignKey());
+        self::assertSame('id', $relation->getLocalKey());
+    }
+
+    public function testBelongsToGetForeignKeyAndLocalKey(): void
+    {
+        $post = $this->posts->hydrateOne(['id' => 1, 'user_id' => 1, 'title' => 'Post A']);
+        $relation = $this->posts->user($post);
+
+        self::assertSame('user_id', $relation->getForeignKey());
+        self::assertSame('id', $relation->getLocalKey());
+    }
+
+    public function testBelongsToManyGetForeignKeyAndLocalKey(): void
+    {
+        $user = $this->users->hydrateOne(['id' => 1, 'name' => 'Alice']);
+        $relation = $this->users->tags($user);
+
+        self::assertSame('user_id', $relation->getForeignKey());
+        self::assertSame('id', $relation->getLocalKey());
+    }
+
+    // ─── countFor() ──────────────────────────────────────────────────────────
+
+    public function testHasOneCountForReturnsCountPerOwner(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO profiles (user_id, bio) VALUES (1, 'Bio A')");
+
+        $user = $this->users->hydrateOne(['id' => 1, 'name' => 'Alice']);
+        $relation = $this->users->profile($user);
+
+        $counts = $relation->countFor([1]);
+        self::assertSame(1, $counts[1] ?? $counts['1']);
+    }
+
+    public function testHasOneCountForReturnsEmptyForEmptyInput(): void
+    {
+        $user = $this->users->hydrateOne(['id' => 1, 'name' => 'Alice']);
+        $relation = $this->users->profile($user);
+
+        self::assertSame([], $relation->countFor([]));
+    }
+
+    public function testBelongsToCountForReturnsCountPerRelatedKey(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO users (name) VALUES ('Bob')");
+
+        $post = $this->posts->hydrateOne(['id' => 1, 'user_id' => 1, 'title' => 'Post A']);
+        $relation = $this->posts->user($post);
+
+        // countFor on BelongsTo counts related-entity rows by their PK
+        $counts = $relation->countFor([1, 2]);
+        self::assertSame(1, $counts[1] ?? $counts['1']);
+        self::assertSame(1, $counts[2] ?? $counts['2']);
+    }
+
+    public function testBelongsToCountForReturnsEmptyForEmptyInput(): void
+    {
+        $post = $this->posts->hydrateOne(['id' => 1, 'user_id' => 1, 'title' => 'Post A']);
+        $relation = $this->posts->user($post);
+
+        self::assertSame([], $relation->countFor([]));
+    }
+
+    public function testBelongsToManyCountForReturnsCountPerOwner(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO tags (name) VALUES ('PHP')");
+        $this->exec("INSERT INTO tags (name) VALUES ('ORM')");
+        $this->exec('INSERT INTO user_tags (user_id, tag_id) VALUES (1, 1)');
+        $this->exec('INSERT INTO user_tags (user_id, tag_id) VALUES (1, 2)');
+
+        $user = $this->users->hydrateOne(['id' => 1, 'name' => 'Alice']);
+        $relation = $this->users->tags($user);
+
+        $counts = $relation->countFor([1]);
+        self::assertSame(2, $counts[1] ?? $counts['1']);
+    }
+
+    public function testBelongsToManyCountForReturnsEmptyForEmptyInput(): void
+    {
+        $user = $this->users->hydrateOne(['id' => 1, 'name' => 'Alice']);
+        $relation = $this->users->tags($user);
+
+        self::assertSame([], $relation->countFor([]));
+    }
 }

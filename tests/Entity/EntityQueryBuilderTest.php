@@ -227,4 +227,22 @@ final class EntityQueryBuilderTest extends RepositoryTestCase
         // Original query is unaffected
         self::assertCount(0, $qb1->get()); // no rows yet
     }
+
+    // ─── join() ──────────────────────────────────────────────────────────────
+
+    public function testJoinFiltersToMatchingRows(): void
+    {
+        $this->exec('CREATE TABLE labels (id INTEGER PRIMARY KEY, article_id INTEGER, name TEXT)');
+        $this->exec("INSERT INTO articles (title, published) VALUES ('Alpha', 1)");
+        $this->exec("INSERT INTO articles (title, published) VALUES ('Beta', 1)");
+        $this->exec('INSERT INTO labels (article_id, name) VALUES (1, \'Urgent\')');
+        // Beta has no label
+
+        $results = $this->articles->query()
+            ->join('labels', 'labels.article_id', '=', 'articles.id')
+            ->get();
+
+        self::assertCount(1, $results);
+        self::assertSame('Alpha', $results[0]->getAttribute('title'));
+    }
 }

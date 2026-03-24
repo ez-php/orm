@@ -1,6 +1,6 @@
 {
   "name": "ez-php/orm",
-  "version": "0.9.3",
+  "version": "1.0.0",
   "description": "ORM module for the ez-php framework — Active Record style models with a fluent query builder and schema builder",
   "type": "library",
   "license": "MIT",
@@ -18,13 +18,13 @@
   },
   "require": {
     "php": "^8.5",
-    "ez-php/contracts": "0.*",
-    "ez-php/console": "0.*",
-    "ez-php/cache": "0.*"
+    "ez-php/contracts": "^1.0",
+    "ez-php/console": "^1.0",
+    "ez-php/cache": "^1.0"
   },
   "require-dev": {
-    "ez-php/docker": "0.*",
-    "ez-php/testing-application": "0.*",
+    "ez-php/docker": "^1.0",
+    "ez-php/testing-application": "^1.0",
     "phpunit/phpunit": "^13.0",
     "phpstan/phpstan": "^2.1",
     "friendsofphp/php-cs-fixer": "^3.94",

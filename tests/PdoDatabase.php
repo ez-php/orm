@@ -55,6 +55,27 @@ final class PdoDatabase implements DatabaseInterface
     }
 
     /**
+     * @param string                   $sql
+     * @param array<int|string, mixed> $bindings
+     *
+     * @return int
+     */
+    public function execute(string $sql, array $bindings = []): int
+    {
+        $stmt = $this->pdo->prepare($sql);
+
+        foreach ($bindings as $index => $value) {
+            $paramIndex = is_int($index) ? $index + 1 : $index;
+            $paramType = is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR;
+            $stmt->bindValue($paramIndex, $value, $paramType);
+        }
+
+        $stmt->execute();
+
+        return $stmt->rowCount();
+    }
+
+    /**
      * @template T
      *
      * @param callable(): T $fn

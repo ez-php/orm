@@ -156,7 +156,7 @@ When adding a new module, add `"$ROOT/modules/<name>"` to the `PACKAGES` array i
 
 # Package: ez-php/orm
 
-Active Record ORM, fluent Query Builder, and Schema Builder.
+Data Mapper ORM, fluent Query Builder, and Schema Builder.
 
 ---
 
@@ -164,19 +164,24 @@ Active Record ORM, fluent Query Builder, and Schema Builder.
 
 ```
 src/
-├── Model.php                         — Abstract Active Record base; attributes, dirty tracking, relations, hooks
-├── ModelQueryBuilder.php             — Typed query builder returning hydrated Model instances; eager-load, paginate, chunk
+├── Entity.php                        — Abstract Data Mapper entity base; attributes, casts, fillable guards, relation storage
+├── AbstractRepository.php            — Abstract repository base; persistence (INSERT/UPDATE/DELETE), dirty tracking via SplObjectStorage, relations, eager-load
+├── EntityQueryBuilder.php            — Typed query builder for entities; wraps QueryBuilder; eager-load with(), withCount()
+├── EntityServiceProvider.php         — Calls Entity::setDatabase($db) in boot()
+├── Hydrator.php                      — Converts raw DB rows → Entity instances and Entity attributes → storage arrays
+├── CastableInterface.php             — Interface for custom value-object casts: castFrom(mixed)/castTo(): mixed
+├── DuplicateKeyException.php         — Thrown by save() on duplicate-key violations (detects via PDOException code)
 ├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem/isFirstPage/isLastPage/from/to
-├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk
-├── ModelServiceProvider.php          — Calls Model::setDatabase($db) in boot(); no bindings registered
+├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache
 ├── Console/
-│   └── MakeModelCommand.php          — Scaffolds a Model subclass in src/Models/
+│   ├── MakeEntityCommand.php         — Scaffolds an Entity subclass in src/Entities/
+│   └── MakeRepositoryCommand.php     — Scaffolds an AbstractRepository subclass in src/Repositories/
 ├── Relations/
-│   ├── Relation.php                  — Abstract base; contracts for getResults/eagerLoadFor/match/getOwnerKey
-│   ├── HasMany.php                   — One-to-many: FK on related model
-│   ├── HasOne.php                    — One-to-one: FK on related model
-│   ├── BelongsTo.php                 — Inverse of HasMany/HasOne: FK on owning model
-│   └── BelongsToMany.php             — Many-to-many via pivot table; raw SQL join
+│   ├── EntityRelation.php            — Abstract base; contracts for getResults/getResult/eagerLoadFor/match/getOwnerKey/getForeignKey/getLocalKey
+│   ├── EntityHasMany.php             — One-to-many: FK on related entity
+│   ├── EntityHasOne.php              — One-to-one: FK on related entity
+│   ├── EntityBelongsTo.php           — Inverse of HasMany/HasOne: FK on owning entity
+│   └── EntityBelongsToMany.php       — Many-to-many via pivot table; raw SQL join
 └── Schema/
     ├── Schema.php                    — DDL façade: create/table/drop/dropIfExists/hasTable
     ├── Blueprint.php                 — Column and constraint definitions; generates CREATE/ALTER/INDEX SQL
@@ -186,25 +191,165 @@ src/
 
 tests/
 ├── TestCase.php                      — Base PHPUnit test case
-├── ModelTestCase.php                 — In-memory SQLite DB wired to Model; fresh DB per test method
+├── DatabaseTestCase.php              — In-memory SQLite DB; fresh per-test method; override setUpDatabase()
+├── RepositoryTestCase.php            — Extends DatabaseTestCase; wires Entity::setDatabase(); resets in tearDown
 ├── QueryBuilderTest.php              — Covers all QB clauses and execution methods
+├── QueryBuilderCacheTest.php         — Covers QB cache() integration with CacheInterface
 ├── PaginatorTest.php                 — Unit tests for Paginator value object (all accessors, edge cases)
-├── PaginationTest.php                — Integration tests for QB/MQB paginate() and chunk()
-├── ORM/ModelTest.php                 — Covers Model CRUD, dirty tracking, casts, soft deletes, relations, hooks
-├── ORM/ModelServiceProviderTest.php  — Covers provider boot wiring
+├── PaginationTest.php                — Integration tests for QB/EQB paginate() and chunk()
+├── Entity/EntityTest.php             — Covers Entity CRUD, dirty tracking, casts, soft deletes, relations
+├── Entity/EntityQueryBuilderTest.php — Covers EQB clauses, get/first/count/paginate/with/withCount
+├── Entity/HydratorTest.php           — Unit tests for Hydrator hydrate() and dehydrate()
+├── Entity/RepositoryTest.php         — Covers AbstractRepository find/save/delete/query/relations/eager-load
+├── Entity/EntityServiceProviderTest.php — Covers provider boot wiring
+├── ORM/EntityServiceProviderTest.php — Application-level provider boot test
 ├── Schema/BlueprintTest.php          — Covers Blueprint SQL generation for all column types and modes
 ├── Schema/SchemaTest.php             — Covers Schema DDL methods against real SQLite
 ├── Schema/SchemaServiceProviderTest.php
-└── Console/MakeModelCommandTest.php
+└── Console/MakeEntityCommand + MakeRepositoryCommandTest
 ```
+
+---
+
+## Architecture: Data Mapper Pattern
+
+The ORM uses the **Data Mapper** pattern. Responsibilities are separated across three layers:
+
+| Layer | Class | Role |
+|---|---|---|
+| Entity | `Entity` | Pure data container — attributes, casts, relation slots. No DB awareness. |
+| Repository | `AbstractRepository<T>` | Persistence logic — INSERT, UPDATE, DELETE, dirty tracking, relations |
+| Query | `EntityQueryBuilder<T>` | Fluent query building with typed hydration |
+
+**Why Data Mapper instead of Active Record:**
+Active Record merges persistence into the domain object (`$user->save()`), which couples business logic to the database. Data Mapper keeps entities as plain objects that carry no persistence state — they do not know whether they are new or loaded, saved or dirty. The repository holds that knowledge. This makes entities easier to test in isolation and supports use cases where the same entity type might be persisted to different data stores.
+
+**Tradeoff vs Active Record:**
+Data Mapper requires more boilerplate (a separate repository class per entity). For simple CRUD applications, Active Record is more concise. The Data Mapper approach pays off when the domain grows complex or when testability without a database is important.
 
 ---
 
 ## Key Classes and Responsibilities
 
+### Entity (`src/Entity.php`)
+
+Abstract base for all domain entities. Entities are pure data containers — they have no static query methods and no `save()` method.
+
+**Static properties (configure per entity):**
+
+| Property | Default | Meaning |
+|---|---|---|
+| `$table` | `''` (auto-derived) | Table name; if empty, derived as `snake_case + s` from class name |
+| `$primaryKey` | `'id'` | Primary key column; `list<string>` for composite PKs |
+| `$fillable` | `[]` | Allowed mass-assignment columns; if set, `$guarded` is ignored |
+| `$guarded` | `[]` | Blocked mass-assignment columns; used only when `$fillable` is empty |
+| `$casts` | `[]` | Column → type map: `int\|integer\|float\|double\|bool\|boolean\|string\|array\|json` or a `CastableInterface` class-string |
+| `$timestamps` | `false` | Auto-set `created_at` / `updated_at` on insert/update (managed by repository) |
+| `$softDeletes` | `false` | `delete()` sets `deleted_at`; query filters `WHERE deleted_at IS NULL` |
+
+**Database registry** — `Entity::setDatabase($db)` stores under `static::class` key. `Entity::database()` resolves: subclass entry → `Entity::class` entry → throws `EzPhpException`. `EntityServiceProvider::boot()` registers the shared default.
+
+**Attribute access** — `__get`/`__set`/`__isset` delegate to `getAttribute`/`setAttribute`. `getAttribute` applies casts on read; `setAttribute` stores the raw value. The `fill(array)` method applies fillable/guarded guards.
+
+**Relation slots** — `setRelation(key, value)` stores loaded relation results. Accessed via `__get` the same way as attributes.
+
+`trashed()` — returns `true` if `deleted_at` is set (soft-delete check, entity-side).
+
+---
+
+### AbstractRepository (`src/AbstractRepository.php`)
+
+`@template T of Entity`. Concrete repositories extend this and implement `entityClass(): string`.
+
+**Constructor:**
+
+```php
+public function __construct(?DatabaseInterface $db = null, ?Hydrator $hydrator = null)
+```
+
+Both dependencies are optional — `$db` falls back to `Entity::database()`, `$hydrator` defaults to `new Hydrator()`.
+
+**Core persistence methods:**
+
+| Method | Returns | Behaviour |
+|---|---|---|
+| `find(id)` | `T\|null` | Looks up by primary key; returns hydrated entity or null |
+| `save(T)` | `void` | INSERT if new entity (no PK); UPDATE dirty columns only if PK is set |
+| `delete(T)` | `void` | Soft-delete if `$softDeletes`; hard-delete otherwise |
+| `findAll()` | `list<T>` | Returns all rows (respects soft-delete filter) |
+| `findBy(col, val)` | `list<T>` | Single-column equality filter |
+| `findOneBy(col, val)` | `T\|null` | Returns first match |
+| `findWhereIn(col, vals)` | `list<T>` | Batch lookup |
+| `countBy(col, ids)` | `array<mixed, int>` | Returns id → count map (used for `withCount`) |
+| `query()` | `EntityQueryBuilder<T>` | Fluent builder with soft-delete filter |
+
+**Dirty tracking (repository-side)** — `SplObjectStorage<Entity, array<string, mixed>>` stores an attribute snapshot at load time (`hydrateTracked()`). `getDirty()` diffs current attributes against the snapshot; only changed columns are included in `UPDATE`.
+
+**Composite primary keys** — `$primaryKey` may be a `list<string>`. `isPrimaryKeyComposite()` checks; `performInsertComposite()` and `performUpdateComposite()` handle the multi-column case.
+
+**Relation helpers** (call from concrete repository public methods):
+
+| Method | Returns |
+|---|---|
+| `hasMany(relRepo, fk, localKey)` | `EntityHasMany` |
+| `hasOne(relRepo, fk, localKey)` | `EntityHasOne` |
+| `belongsTo(relRepo, fk, ownerKey)` | `EntityBelongsTo` |
+| `belongsToMany(relRepo, pivotTable, fk, relatedFk, localKey)` | `EntityBelongsToMany` |
+
+---
+
+### EntityQueryBuilder (`src/EntityQueryBuilder.php`)
+
+`@template T of Entity`. Typed wrapper over `QueryBuilder` that hydrates rows into entity instances.
+
+**Clause methods** (all return `self<T>`): `where`, `whereIn`, `whereNotIn`, `whereNull`, `whereNotNull`, `join`, `orderBy`, `limit`, `offset`.
+
+**Execution methods:**
+
+| Method | Returns |
+|---|---|
+| `get()` | `list<T>` — hydrates all rows; resolves eager-loaded relations |
+| `first()` | `T\|null` |
+| `count()` | `int` |
+| `paginate(perPage, page)` | `Paginator<T>` |
+| `chunk(size, callback)` | `void` |
+
+**Eager loading** — `with(...relations)` queues relation names. `get()` calls `$repository->$relation($firstEntity)` to obtain an `EntityRelation`, batch-loads via `eagerLoadFor(ids)`, then calls `match()` to assign results. N+1 avoided; one extra query per eager-loaded relation.
+
+**`withCount(...relations)`** — queries `countBy()` on each relation's repository and sets `{relation}_count` as a synthetic attribute on each entity.
+
+---
+
+### Hydrator (`src/Hydrator.php`)
+
+Converts raw rows to entities and entities to storage arrays.
+
+- `hydrate(entityClass, row): Entity` — sets all row columns directly via `setAttribute()`, bypassing fillable guards
+- `dehydrate(entity, casts): array` — applies inverse casts (`CastableInterface::castTo()`, `array` → JSON) and returns a storage-compatible attribute map
+
+---
+
+### CastableInterface (`src/CastableInterface.php`)
+
+Implement on a value-object class for custom casting:
+
+```php
+class Money implements CastableInterface
+{
+    public static function castFrom(mixed $value): static { /* ... */ }
+    public function castTo(): mixed { /* ... */ }
+}
+
+protected static array $casts = ['price' => Money::class];
+```
+
+`getAttribute()` calls `castFrom()` on read; `Hydrator::dehydrate()` calls `castTo()` before writing to the DB.
+
+---
+
 ### QueryBuilder (`src/QueryBuilder.php`)
 
-Fluent builder for raw SQL. All wither methods return a clone — the original is not mutated.
+Fluent builder for raw SQL. All clause methods return a clone — the original is never mutated.
 
 **Clause methods** (all return `self`):
 
@@ -237,87 +382,25 @@ Fluent builder for raw SQL. All wither methods return a clone — the original i
 | `delete()` | `int` (rows affected) |
 | `paginate(perPage, page)` | `Paginator<array<string, mixed>>` |
 | `chunk(size, callback)` | `void` — iterates chunks until exhausted |
-
----
-
-### Model (`src/Model.php`)
-
-Abstract Active Record base. Subclasses define the table via static properties.
-
-**Static properties (configure per model):**
-
-| Property | Default | Meaning |
-|---|---|---|
-| `$table` | `''` (auto-derived) | Table name; if empty, derived as `snake_case + s` from class name |
-| `$primaryKey` | `'id'` | Primary key column |
-| `$fillable` | `[]` | Allowed mass-assignment columns; if set, `$guarded` is ignored |
-| `$guarded` | `[]` | Blocked mass-assignment columns; used only when `$fillable` is empty |
-| `$casts` | `[]` | Column → type map: `int\|integer\|float\|double\|bool\|boolean\|string\|array\|json` |
-| `$timestamps` | `false` | Auto-set `created_at` / `updated_at` on insert/update |
-| `$softDeletes` | `false` | `delete()` sets `deleted_at`; `query()` adds `WHERE deleted_at IS NULL` |
-
-**Database registry** — `Model::setDatabase($db)` stores under `static::class` key. Subclass calls register a per-model connection; base `Model::setDatabase()` registers the shared default. `database()` resolves: subclass entry → `Model::class` entry → throws `EzPhpException`.
-
-**Querying:**
-
-| Method | Returns |
-|---|---|
-| `find(id)` | `static\|null` |
-| `all()` | `list<static>` |
-| `where(col, val)` | `ModelQueryBuilder<static>` |
-| `whereIn(col, values)` | `ModelQueryBuilder<static>` |
-| `with(...relations)` | `ModelQueryBuilder<static>` |
-| `query()` | `ModelQueryBuilder<static>` (with soft-delete filter) |
-| `withTrashed()` | `ModelQueryBuilder<static>` (no soft-delete filter) |
-| `onlyTrashed()` | `ModelQueryBuilder<static>` (only deleted rows) |
-
-**Persistence:**
-
-| Method | Behaviour |
-|---|---|
-| `save()` | INSERT if no PK; UPDATE dirty columns only if PK present |
-| `create(array)` | `new static($data); save(); return $model` |
-| `delete()` | Soft-delete if `$softDeletes`; hard-delete otherwise |
-| `forceDelete()` | Always hard-deletes; ignores `$softDeletes` |
-| `restore()` | Sets `deleted_at = null` on a soft-deleted model |
-
-**Dirty tracking** — `$original` is synced on `fromRaw()` and after successful insert/update. `getDirty()` returns only changed columns. `normalizeForComparison()` serialises `array`/`json` cast fields to JSON for comparison, preventing false positives.
-
-**Attribute access** — `__get`/`__set`/`__isset` delegate to `getAttribute`/`setAttribute`. `getAttribute` applies casts on read; `prepareForStorage` applies inverse casts (array → JSON) on write.
-
-**Lifecycle hooks** (override in subclass, no-ops by default):
-`beforeSave` · `afterSave` · `beforeCreate` · `afterCreate` · `beforeUpdate` · `afterUpdate` · `beforeDelete` · `afterDelete`
-
----
-
-### ModelQueryBuilder (`src/ModelQueryBuilder.php`)
-
-Generic typed wrapper over `QueryBuilder`. `@template TModel of Model`.
-
-- `get()` — hydrates each row via `TModel::fromRaw($row)`, then resolves eager-loaded relations
-- `first()` — hydrates single row
-- `with(...relations)` — queues relation names for eager loading
-
-**Eager loading** — `loadEagerRelations()` calls the first model's relation method to obtain a `Relation` instance, collects owner-key values across all models in a single `whereIn` query, then calls `match()` to set relations on each model. N+1 is avoided; one extra query per eager-loaded relation.
+| `cache(ttl, CacheInterface)` | `self` — next `get()` will read from/write to cache |
 
 ---
 
 ### Relations (`src/Relations/`)
 
-All relations extend `Relation` and implement:
-- `getResults()` — lazy fetch
-- `getOwnerKey()` — which key to collect from parent models for batch loading
+All relations extend `EntityRelation` and implement:
+- `getResults()` — lazy fetch (list)
+- `getResult()` — lazy fetch (single, for HasOne/BelongsTo)
+- `getOwnerKey()` / `getForeignKey()` / `getLocalKey()` — key metadata for eager loading
 - `eagerLoadFor(list $ids)` — single batch query
-- `match(models, results, relation)` — distribute results back onto parent models
+- `match(entities, results, relation)` — distribute results back onto owning entities
 
 | Class | Direction | FK location |
 |---|---|---|
-| `HasMany` | one → many | FK on **related** model |
-| `HasOne` | one → one | FK on **related** model |
-| `BelongsTo` | many → one | FK on **owning** model |
-| `BelongsToMany` | many ↔ many | pivot table; uses raw SQL join with `__pivot_fk` alias |
-
-`BelongsToMany` issues raw SQL directly against the `Database` instance, not via `QueryBuilder`, because the join spans the pivot table.
+| `EntityHasMany` | one → many | FK on **related** entity |
+| `EntityHasOne` | one → one | FK on **related** entity |
+| `EntityBelongsTo` | many → one | FK on **owning** entity |
+| `EntityBelongsToMany` | many ↔ many | pivot table; raw SQL join |
 
 ---
 
@@ -348,24 +431,28 @@ All relations extend `Relation` and implement:
 
 ## Design Decisions and Constraints
 
-- **Per-class database registry instead of a static property** — A plain `protected static $db` would be shared across the entire class hierarchy via PHP's static property inheritance rules. The `array<class-string, Database>` registry keyed by `static::class` (via late-static-binding write) allows different model classes to use different connections without interference.
-- **`Model::setDatabase(Model::class)` as the shared default** — Calling `Model::setDatabase($db)` registers under `Model::class`. `database()` falls back to this after checking the specific subclass key. This means `ModelServiceProvider::boot()` wires all models with one call.
-- **`Model::resetDatabase()` for tests** — Tests must call `Model::resetDatabase()` (or use `ModelTestCase`) in `tearDown`. Omitting this leaks the database connection across test classes.
-- **Dirty tracking compares cast fields as JSON** — When a column has an `array`/`json` cast, PHP array equality is unreliable after a round-trip through JSON (key order, type coercion). `normalizeForComparison()` serialises arrays to JSON strings before comparing, so only semantically different arrays are treated as dirty.
-- **`performUpdate()` sends only dirty columns** — An `UPDATE` with an empty diff is a no-op (returns `true` immediately). This prevents unnecessary DB round-trips and timestamp updates when nothing changed.
-- **`BelongsToMany` uses a `__pivot_fk` alias** — The eager-load query SELECTs the pivot FK column with an alias to support `match()`. This is an implementation detail; application code should not access `__pivot_fk` directly.
-- **Hooks are empty protected methods, not events** — Lifecycle hooks are designed for direct override in subclasses, keeping the pattern explicit and traceable without requiring an event bus dependency.
-- **Blueprint is driver-aware** — The same migration code runs on both SQLite (tests) and MySQL (production). Type normalisation is handled centrally in `Blueprint`, so migrations don't need `if ($driver === 'sqlite')` branches.
-- **`QueryBuilder` uses clone-based withers** — Every clause method clones the builder so intermediate states can be reused without side effects. This also makes `ModelQueryBuilder` safe to share across relation eager-loading.
+- **Data Mapper instead of Active Record** — Entities are plain PHP objects with no static query methods and no `save()`. All persistence is in the repository. This separates the domain model from the storage mechanism, makes entities unit-testable without a database, and avoids the global state problems of Active Record base classes.
+- **Repository-side dirty tracking via `SplObjectStorage`** — Storing `$original` inside the entity would couple the entity to its own persistence history, violating the Data Mapper principle. `SplObjectStorage` keyed by entity object identity keeps the snapshot outside the entity and is garbage-collected when the entity goes out of scope.
+- **Per-class database registry** — A plain `protected static $db` would be shared across the entire class hierarchy via PHP's static property inheritance rules. The `array<class-string, Database>` registry keyed by `static::class` (via late-static-binding write) allows different entity types to use different connections without interference.
+- **`Entity::setDatabase(Entity::class)` as the shared default** — `EntityServiceProvider::boot()` registers the default. `database()` falls back to this after checking the specific subclass key.
+- **`Entity::resetDatabase()` for tests** — Tests must call this (or use `RepositoryTestCase`) in `tearDown`. Omitting it leaks the database connection across test classes.
+- **Dirty tracking compares cast fields normalised** — When a column has an `array`/`json` or `CastableInterface` cast, `normalizeForComparison()` reduces values to a comparable form (JSON string for arrays, `castTo()` for custom types) to avoid false dirty positives after a round-trip.
+- **`performUpdate()` sends only dirty columns** — An `UPDATE` with an empty diff is a no-op. This prevents unnecessary DB round-trips and timestamp updates when nothing changed.
+- **Composite PKs supported** — `$primaryKey` can be a `list<string>`. `save()` dispatches to `performInsertComposite`/`performUpdateComposite` accordingly.
+- **`CastableInterface` for domain value objects** — Custom value objects (e.g. `Money`, `EmailAddress`) implement `castFrom`/`castTo` and are registered in `$casts`. This keeps domain types in the entity without framework coupling.
+- **`QueryBuilder::cache()` integration** — Pass a `CacheInterface` instance and TTL; the next `get()` will read from cache on hit or execute the query and store the result on miss. Cache is keyed by the compiled SQL + bindings.
+- **Blueprint is driver-aware** — The same migration code runs on both SQLite (tests) and MySQL (production). Type normalisation is handled centrally in `Blueprint`.
+- **`QueryBuilder` uses clone-based withers** — Every clause method clones the builder so intermediate states can be reused without side effects.
 
 ---
 
 ## Testing Approach
 
-- **`ModelTestCase`** — Provides a fresh in-memory SQLite database (`sqlite::memory:`) wired via `Model::setDatabase()` for every test method. Override `setUpDatabase()` to create tables and seed fixtures. `tearDown` calls `Model::resetDatabase()`.
+- **`RepositoryTestCase`** — Provides a fresh in-memory SQLite database (`sqlite::memory:`) wired via `Entity::setDatabase()` for every test method. Override `setUpDatabase()` to create tables and seed fixtures. `tearDown` calls `Entity::resetDatabase()`.
 - **No MySQL required for most tests** — SQLite covers the full ORM surface. MySQL-specific behaviour (e.g. `INFORMATION_SCHEMA` in `hasTable`) should be noted in test comments.
-- **`QueryBuilder` and `Schema` tests** — Also use SQLite in-memory. `QueryBuilderTest` does not use `ModelTestCase` (no model involved); it constructs a `Database` directly.
-- **Relation eager-load tests** — Set up two related tables in `setUpDatabase()`, seed rows, call `with('relation')`, and assert the relation is populated on each model.
+- **`QueryBuilder` and `Schema` tests** — Also use SQLite in-memory. `QueryBuilderTest` constructs a `Database` directly; `RepositoryTestCase` is not needed.
+- **Relation eager-load tests** — Set up two related tables in `setUpDatabase()`, seed rows, call `with('relation')` on the repository, and assert the relation is populated on each returned entity.
+- **`CastableInterface` tests** — Use inline anonymous classes. Assert `getAttribute()` returns the cast object and that `save()` stores the correct scalar value.
 - **`#[UsesClass]` required** — PHPUnit is configured with `beStrictAboutCoverageMetadata=true`. Declare indirectly used classes with `#[UsesClass]`.
 
 ---
@@ -376,8 +463,8 @@ All relations extend `Relation` and implement:
 |---|---|
 | Raw PDO / transaction management | `ez-php/framework` (`Database`) |
 | Migration tracking (`migrations` table) | `ez-php/framework` (`Migrator`) |
-| Validation of model attributes | `ez-php/validation` |
-| Caching of query results | `ez-php/cache` + application layer |
+| Validation of entity attributes | `ez-php/validation` |
+| Caching of query results (application-level) | `ez-php/cache` + application layer |
 | Full-text search | Infrastructure layer / dedicated search service |
 | Database seeding commands | Application layer |
-| Complex pivot data / pivot models | Application layer (extend `BelongsToMany` or use raw `QueryBuilder`) |
+| Complex pivot data / pivot entities | Application layer (extend `EntityBelongsToMany` or use raw `QueryBuilder`) |

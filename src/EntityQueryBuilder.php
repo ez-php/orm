@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
+use BadMethodCallException;
 use EzPhp\Orm\Relations\EntityRelation;
+use ReflectionMethod;
+use RuntimeException;
 
 /**
  * Class EntityQueryBuilder
@@ -288,6 +291,48 @@ final class EntityQueryBuilder
             $callback($entities);
             $page++;
         } while (count($rows) === $size);
+    }
+
+    /**
+     * Dispatch a call to a scope method on the repository.
+     *
+     * Scope methods follow the convention: scope{Name}(QueryBuilder): QueryBuilder.
+     * Example: UserRepository::scopeActive(QueryBuilder $qb): QueryBuilder
+     *
+     * Called via: $repo->query()->active()->get()
+     *
+     * @param string       $name
+     * @param array<mixed> $arguments
+     *
+     * @throws BadMethodCallException When the scope method does not exist on the repository.
+     * @throws RuntimeException       When the scope method does not return a QueryBuilder.
+     *
+     * @return self<T>
+     */
+    public function __call(string $name, array $arguments): self
+    {
+        $method = 'scope' . ucfirst($name);
+
+        if (!method_exists($this->repository, $method)) {
+            throw new BadMethodCallException(
+                sprintf(
+                    'Scope [%s] not found on repository [%s].',
+                    $name,
+                    get_class($this->repository),
+                ),
+            );
+        }
+
+        $reflection = new ReflectionMethod($this->repository, $method);
+        $result = $reflection->invoke($this->repository, $this->builder, ...$arguments);
+
+        if (!($result instanceof QueryBuilder)) {
+            throw new RuntimeException(
+                sprintf('Scope method [%s] must return a QueryBuilder instance.', $method),
+            );
+        }
+
+        return clone($this, ['builder' => $result]);
     }
 
     /**

@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Entity;
 
+use BadMethodCallException;
 use EzPhp\Orm\AbstractRepository;
 use EzPhp\Orm\Entity;
 use EzPhp\Orm\EntityQueryBuilder;
 use EzPhp\Orm\Paginator;
+use EzPhp\Orm\QueryBuilder;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use Tests\RepositoryTestCase;
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -20,18 +23,39 @@ final class ArticleEntity extends Entity
     protected static array $fillable = ['title', 'published'];
 }
 
-/** @extends AbstractRepository<ArticleEntity> */
+/**
+ * @extends AbstractRepository<ArticleEntity>
+ * @method EntityQueryBuilder<ArticleEntity> published()
+ * @method EntityQueryBuilder<ArticleEntity> titled(string $title)
+ */
 final class ArticleRepository extends AbstractRepository
 {
     protected function entityClass(): string
     {
         return ArticleEntity::class;
     }
+
+    /**
+     * Scope: only published articles.
+     */
+    public function scopePublished(QueryBuilder $qb): QueryBuilder
+    {
+        return $qb->where('published', 1);
+    }
+
+    /**
+     * Scope: articles with title matching a pattern (parameterised scope).
+     */
+    public function scopeTitled(QueryBuilder $qb, string $title): QueryBuilder
+    {
+        return $qb->where('title', $title);
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[CoversClass(EntityQueryBuilder::class)]
+#[UsesClass(QueryBuilder::class)]
 final class EntityQueryBuilderTest extends RepositoryTestCase
 {
     private ArticleRepository $articles;
@@ -244,5 +268,63 @@ final class EntityQueryBuilderTest extends RepositoryTestCase
 
         self::assertCount(1, $results);
         self::assertSame('Alpha', $results[0]->getAttribute('title'));
+    }
+
+    // ─── __call / scopes ─────────────────────────────────────────────────────
+    //
+    // PHPStan does not resolve magic methods dispatched by __call at the call
+    // site. Scope tests therefore invoke __call() directly — the mechanism is
+    // identical to the magic `->scopeName()` syntax at runtime.
+
+    public function testScopeFiltersResults(): void
+    {
+        $this->seedArticles();
+
+        /** @var list<ArticleEntity> $results */
+        $results = $this->articles->query()->__call('published', [])->get();
+
+        self::assertCount(2, $results);
+
+        foreach ($results as $entity) {
+            self::assertSame(1, $entity->getAttribute('published'));
+        }
+    }
+
+    public function testScopeCanBeChainedWithWhereClause(): void
+    {
+        $this->seedArticles();
+
+        /** @var list<ArticleEntity> $results */
+        $results = $this->articles->query()->__call('published', [])->where('title', 'Alpha')->get();
+
+        self::assertCount(1, $results);
+        self::assertSame('Alpha', $results[0]->getAttribute('title'));
+    }
+
+    public function testScopeReturnsClonesNotSameInstance(): void
+    {
+        $qb1 = $this->articles->query();
+        $qb2 = $qb1->__call('published', []);
+
+        self::assertNotSame($qb1, $qb2);
+    }
+
+    public function testParameterisedScope(): void
+    {
+        $this->seedArticles();
+
+        /** @var list<ArticleEntity> $results */
+        $results = $this->articles->query()->__call('titled', ['Alpha'])->get();
+
+        self::assertCount(1, $results);
+        self::assertSame('Alpha', $results[0]->getAttribute('title'));
+    }
+
+    public function testScopeThrowsBadMethodCallExceptionForUnknownScope(): void
+    {
+        $this->expectException(BadMethodCallException::class);
+        $this->expectExceptionMessageMatches('/Scope \[nonexistent\] not found/');
+
+        $this->articles->query()->__call('nonexistent', []);
     }
 }

@@ -1,6 +1,6 @@
 {
   "name": "ez-php/orm",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "ORM module for the ez-php framework — Active Record style models with a fluent query builder and schema builder",
   "type": "library",
   "license": "MIT",

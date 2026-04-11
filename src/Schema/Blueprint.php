@@ -227,7 +227,7 @@ final class Blueprint
 
         if ($this->isSqlite()) {
             $col = $this->addColumn(new ColumnDefinition($column, 'TEXT'));
-            $col->withCheck("$column IN (" . implode(', ', $escapedValues) . ')');
+            $col->withCheck($this->quoteIdentifier($column) . ' IN (' . implode(', ', $escapedValues) . ')');
 
             return $col;
         }
@@ -300,11 +300,12 @@ final class Blueprint
         }
 
         foreach ($this->foreignKeys as $fk) {
-            $parts[] = 'FOREIGN KEY (' . $fk->getColumn() . ')'
-                . ' REFERENCES ' . $fk->getReferencedTable() . '(' . $fk->getReferencedColumn() . ')';
+            $parts[] = 'FOREIGN KEY (' . $this->quoteIdentifier($fk->getColumn()) . ')'
+                . ' REFERENCES ' . $this->quoteIdentifier($fk->getReferencedTable())
+                . '(' . $this->quoteIdentifier($fk->getReferencedColumn()) . ')';
         }
 
-        return 'CREATE TABLE ' . $table . ' (' . implode(', ', $parts) . ')';
+        return 'CREATE TABLE ' . $this->quoteIdentifier($table) . ' (' . implode(', ', $parts) . ')';
     }
 
     /**
@@ -315,6 +316,7 @@ final class Blueprint
     public function toAlterSql(string $table): array
     {
         $statements = [];
+        $quotedTable = $this->quoteIdentifier($table);
 
         foreach ($this->addedColumns as $col) {
             if ($col->isChanged()) {
@@ -322,7 +324,7 @@ final class Blueprint
                 if (!$this->isSqlite()) {
                     $compiled = $this->compileColumn($col);
                     $suffix = $this->buildPositionSuffix($col);
-                    $statements[] = 'ALTER TABLE ' . $table . ' MODIFY COLUMN ' . $compiled . $suffix;
+                    $statements[] = 'ALTER TABLE ' . $quotedTable . ' MODIFY COLUMN ' . $compiled . $suffix;
                 }
                 // SQLite: skip MODIFY COLUMN silently (SQLite does not support it)
                 continue;
@@ -330,22 +332,25 @@ final class Blueprint
 
             $compiled = $this->compileColumn($col);
             $suffix = $this->buildPositionSuffix($col);
-            $statements[] = 'ALTER TABLE ' . $table . ' ADD COLUMN ' . $compiled . $suffix;
+            $statements[] = 'ALTER TABLE ' . $quotedTable . ' ADD COLUMN ' . $compiled . $suffix;
         }
 
         foreach ($this->droppedColumns as $col) {
-            $statements[] = 'ALTER TABLE ' . $table . ' DROP COLUMN ' . $col;
+            $statements[] = 'ALTER TABLE ' . $quotedTable . ' DROP COLUMN ' . $this->quoteIdentifier($col);
         }
 
         foreach ($this->renamedColumns as $rename) {
-            $statements[] = 'ALTER TABLE ' . $table . ' RENAME COLUMN ' . $rename['from'] . ' TO ' . $rename['to'];
+            $statements[] = 'ALTER TABLE ' . $quotedTable
+                . ' RENAME COLUMN ' . $this->quoteIdentifier($rename['from'])
+                . ' TO ' . $this->quoteIdentifier($rename['to']);
         }
 
         if (!$this->isSqlite()) {
             foreach ($this->foreignKeys as $fk) {
-                $statements[] = 'ALTER TABLE ' . $table
-                    . ' ADD FOREIGN KEY (' . $fk->getColumn() . ')'
-                    . ' REFERENCES ' . $fk->getReferencedTable() . '(' . $fk->getReferencedColumn() . ')';
+                $statements[] = 'ALTER TABLE ' . $quotedTable
+                    . ' ADD FOREIGN KEY (' . $this->quoteIdentifier($fk->getColumn()) . ')'
+                    . ' REFERENCES ' . $this->quoteIdentifier($fk->getReferencedTable())
+                    . '(' . $this->quoteIdentifier($fk->getReferencedColumn()) . ')';
             }
         }
 
@@ -360,14 +365,18 @@ final class Blueprint
     public function toIndexSql(string $table): array
     {
         $statements = [];
+        $quotedTable = $this->quoteIdentifier($table);
 
         foreach ($this->indexes as $idx) {
-            $name = $idx['name'] !== ''
-                ? $idx['name']
-                : $table . '_' . implode('_', $idx['columns']) . '_index';
+            if ($idx['name'] !== '') {
+                $name = $this->quoteIdentifier($idx['name']);
+            } else {
+                // Auto-generated name uses unquoted segments joined with underscores.
+                $name = $this->quoteIdentifier($table . '_' . implode('_', $idx['columns']) . '_index');
+            }
 
-            $cols = implode(', ', $idx['columns']);
-            $statements[] = 'CREATE INDEX ' . $name . ' ON ' . $table . ' (' . $cols . ')';
+            $cols = implode(', ', array_map($this->quoteIdentifier(...), $idx['columns']));
+            $statements[] = 'CREATE INDEX ' . $name . ' ON ' . $quotedTable . ' (' . $cols . ')';
         }
 
         return $statements;
@@ -379,6 +388,27 @@ final class Blueprint
     private function isSqlite(): bool
     {
         return $this->driver === 'sqlite';
+    }
+
+    /**
+     * Quote and validate a DDL identifier (table or column name).
+     *
+     * Throws InvalidArgumentException for names containing characters outside
+     * `[a-zA-Z0-9_]` to prevent DDL injection.
+     *
+     * @param string $name
+     *
+     * @return string
+     */
+    private function quoteIdentifier(string $name): string
+    {
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+            throw new InvalidArgumentException(
+                "Invalid SQL identifier: '$name'. Only alphanumeric characters and underscores are allowed."
+            );
+        }
+
+        return '`' . $name . '`';
     }
 
     /**
@@ -415,7 +445,7 @@ final class Blueprint
         }
 
         if ($col->getAfterColumn() !== null) {
-            return ' AFTER ' . $col->getAfterColumn();
+            return ' AFTER ' . $this->quoteIdentifier($col->getAfterColumn());
         }
 
         return '';
@@ -428,7 +458,7 @@ final class Blueprint
      */
     private function compileColumn(ColumnDefinition $col): string
     {
-        $def = $col->name . ' ' . $col->sqlType;
+        $def = $this->quoteIdentifier($col->name) . ' ' . $col->sqlType;
 
         if ($col->isPrimaryKey()) {
             return $def . ' PRIMARY KEY';

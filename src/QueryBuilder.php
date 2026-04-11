@@ -329,8 +329,16 @@ final class QueryBuilder
      */
     public function orderBy(string $column, string $direction = 'ASC'): self
     {
+        $upper = strtoupper($direction);
+
+        if (!in_array($upper, ['ASC', 'DESC'], true)) {
+            throw new InvalidArgumentException(
+                "Invalid ORDER BY direction: '$direction'. Allowed: ASC, DESC."
+            );
+        }
+
         $clone = clone $this;
-        $clone->orders[] = ['column' => $column, 'direction' => strtoupper($direction)];
+        $clone->orders[] = ['column' => $column, 'direction' => $upper];
 
         return $clone;
     }
@@ -462,7 +470,8 @@ final class QueryBuilder
      */
     public function sum(string $column): float
     {
-        $sql = 'SELECT SUM(' . $column . ') as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
+        $col = $this->quoteIdentifier($column);
+        $sql = 'SELECT SUM(' . $col . ') as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
         $result = $this->db->query($sql, $this->collectWhereBindings());
 
         /** @var float|int|string|null $raw */
@@ -478,7 +487,8 @@ final class QueryBuilder
      */
     public function avg(string $column): float
     {
-        $sql = 'SELECT AVG(' . $column . ') as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
+        $col = $this->quoteIdentifier($column);
+        $sql = 'SELECT AVG(' . $col . ') as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
         $result = $this->db->query($sql, $this->collectWhereBindings());
 
         /** @var float|int|string|null $raw */
@@ -494,7 +504,8 @@ final class QueryBuilder
      */
     public function min(string $column): string|int|float|null
     {
-        $sql = 'SELECT MIN(' . $column . ') as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
+        $col = $this->quoteIdentifier($column);
+        $sql = 'SELECT MIN(' . $col . ') as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
         $result = $this->db->query($sql, $this->collectWhereBindings());
 
         /** @var string|int|float|null $value */
@@ -510,7 +521,8 @@ final class QueryBuilder
      */
     public function max(string $column): string|int|float|null
     {
-        $sql = 'SELECT MAX(' . $column . ') as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
+        $col = $this->quoteIdentifier($column);
+        $sql = 'SELECT MAX(' . $col . ') as aggregate FROM ' . $this->table . $this->buildJoins() . $this->buildWhere();
         $result = $this->db->query($sql, $this->collectWhereBindings());
 
         /** @var string|int|float|null $value */
@@ -530,7 +542,7 @@ final class QueryBuilder
             throw new InvalidArgumentException('insert() requires at least one column.');
         }
 
-        $columns = implode(', ', array_keys($data));
+        $columns = implode(', ', array_map($this->quoteIdentifier(...), array_keys($data)));
         $placeholders = implode(', ', array_fill(0, count($data), '?'));
         $sql = "INSERT INTO $this->table ($columns) VALUES ($placeholders)";
 
@@ -560,7 +572,7 @@ final class QueryBuilder
             }
         }
 
-        $columns = implode(', ', $keys);
+        $columns = implode(', ', array_map($this->quoteIdentifier(...), $keys));
         $rowPlaceholder = '(' . implode(', ', array_fill(0, count($keys), '?')) . ')';
         $allPlaceholders = implode(', ', array_fill(0, count($rows), $rowPlaceholder));
 
@@ -602,30 +614,36 @@ final class QueryBuilder
             $update = array_values(array_diff(array_keys($data), $uniqueBy));
         }
 
-        $columns = implode(', ', array_keys($data));
+        $columns = implode(', ', array_map($this->quoteIdentifier(...), array_keys($data)));
         $placeholders = implode(', ', array_fill(0, count($data), '?'));
 
         if ($this->driver === 'mysql') {
             if ($update === []) {
-                $firstKey = array_keys($data)[0];
+                $firstKey = $this->quoteIdentifier(array_keys($data)[0]);
                 $noOp = "$firstKey = VALUES($firstKey)";
                 $updateSql = $noOp;
             } else {
-                $sets = array_map(static fn (string $col) => "$col = VALUES($col)", $update);
+                $sets = array_map(function (string $col): string {
+                    $q = $this->quoteIdentifier($col);
+                    return "$q = VALUES($q)";
+                }, $update);
                 $updateSql = implode(', ', $sets);
             }
 
             $sql = "INSERT INTO $this->table ($columns) VALUES ($placeholders) ON DUPLICATE KEY UPDATE $updateSql";
         } else {
             // SQLite
-            $uniqueCols = implode(', ', $uniqueBy);
+            $uniqueCols = implode(', ', array_map($this->quoteIdentifier(...), $uniqueBy));
 
             if ($update === []) {
-                $firstKey = array_keys($data)[0];
+                $firstKey = $this->quoteIdentifier(array_keys($data)[0]);
                 $noOp = "$firstKey = excluded.$firstKey";
                 $updateSql = $noOp;
             } else {
-                $sets = array_map(static fn (string $col) => "$col = excluded.$col", $update);
+                $sets = array_map(function (string $col): string {
+                    $q = $this->quoteIdentifier($col);
+                    return "$q = excluded.$q";
+                }, $update);
                 $updateSql = implode(', ', $sets);
             }
 
@@ -646,7 +664,7 @@ final class QueryBuilder
     {
         $sets = [];
         foreach (array_keys($data) as $col) {
-            $sets[] = "$col = ?";
+            $sets[] = $this->quoteIdentifier($col) . ' = ?';
         }
 
         $sql = 'UPDATE ' . $this->table . ' SET ' . implode(', ', $sets) . $this->buildWhere();
@@ -670,7 +688,8 @@ final class QueryBuilder
      */
     public function increment(string $column, int|float $amount = 1): int
     {
-        $sql = 'UPDATE ' . $this->table . ' SET ' . $column . ' = ' . $column . ' + ?' . $this->buildWhere();
+        $col = $this->quoteIdentifier($column);
+        $sql = 'UPDATE ' . $this->table . ' SET ' . $col . ' = ' . $col . ' + ?' . $this->buildWhere();
         $bindings = array_merge([$amount], $this->collectWhereBindings());
 
         $stmt = $this->db->getPdo()->prepare($sql);
@@ -691,7 +710,8 @@ final class QueryBuilder
      */
     public function decrement(string $column, int|float $amount = 1): int
     {
-        $sql = 'UPDATE ' . $this->table . ' SET ' . $column . ' = ' . $column . ' - ?' . $this->buildWhere();
+        $col = $this->quoteIdentifier($column);
+        $sql = 'UPDATE ' . $this->table . ' SET ' . $col . ' = ' . $col . ' - ?' . $this->buildWhere();
         $bindings = array_merge([$amount], $this->collectWhereBindings());
 
         $stmt = $this->db->getPdo()->prepare($sql);
@@ -919,7 +939,10 @@ final class QueryBuilder
 
         $clauses = [];
         foreach ($this->joins as $join) {
-            $clauses[] = "{$join['type']} JOIN {$join['table']} ON {$join['first']} {$join['operator']} {$join['second']}";
+            $table = $this->quoteIdentifier($join['table']);
+            $first = $this->quoteIdentifier($join['first']);
+            $second = $this->quoteIdentifier($join['second']);
+            $clauses[] = "{$join['type']} JOIN {$table} ON {$first} {$join['operator']} {$second}";
         }
 
         return ' ' . implode(' ', $clauses);
@@ -996,7 +1019,7 @@ final class QueryBuilder
             return '';
         }
 
-        return ' GROUP BY ' . implode(', ', $this->groupBys);
+        return ' GROUP BY ' . implode(', ', array_map($this->quoteIdentifier(...), $this->groupBys));
     }
 
     /**
@@ -1027,10 +1050,47 @@ final class QueryBuilder
 
         $clauses = [];
         foreach ($this->orders as $order) {
-            $clauses[] = "{$order['column']} {$order['direction']}";
+            $col = $this->quoteIdentifier($order['column']);
+            $clauses[] = "{$col} {$order['direction']}";
         }
 
         return ' ORDER BY ' . implode(', ', $clauses);
+    }
+
+    /**
+     * Quote a SQL identifier (column or table name) to prevent injection.
+     *
+     * Accepts simple names (`column`), qualified names (`table.column`), and the
+     * bare wildcard `*` or qualified wildcard `table.*`. Every segment is validated
+     * against `/^[a-zA-Z0-9_]+$/` before being wrapped in backticks.
+     *
+     * @param string $name
+     *
+     * @return string
+     */
+    private function quoteIdentifier(string $name): string
+    {
+        if ($name === '*') {
+            return '*';
+        }
+
+        $parts = explode('.', $name);
+
+        $quoted = array_map(static function (string $part): string {
+            if ($part === '*') {
+                return '*';
+            }
+
+            if (!preg_match('/^[a-zA-Z0-9_]+$/', $part)) {
+                throw new InvalidArgumentException(
+                    "Invalid SQL identifier segment: '$part'. Only alphanumeric characters and underscores are allowed."
+                );
+            }
+
+            return '`' . $part . '`';
+        }, $parts);
+
+        return implode('.', $quoted);
     }
 
     /**

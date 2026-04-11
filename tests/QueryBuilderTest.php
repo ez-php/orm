@@ -779,4 +779,104 @@ final class QueryBuilderTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame('Charlie', $rows[0]['name']);
     }
+
+    // =========================================================================
+    // Security: identifier validation
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_order_by_throws_on_invalid_direction(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid ORDER BY direction');
+
+        (new QueryBuilder($this->db, 'users'))->orderBy('name', 'INVALID');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_order_by_rejects_sql_injection_in_direction(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new QueryBuilder($this->db, 'users'))->orderBy('name', 'ASC; DROP TABLE users--');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_order_by_accepts_asc_case_insensitive(): void
+    {
+        $rows = (new QueryBuilder($this->db, 'users'))->orderBy('name', 'asc')->get();
+        $this->assertSame('Alice', $rows[0]['name']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_order_by_accepts_desc_case_insensitive(): void
+    {
+        $rows = (new QueryBuilder($this->db, 'users'))->orderBy('name', 'desc')->get();
+        $this->assertSame('Charlie', $rows[0]['name']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_invalid_column_in_order_by_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid SQL identifier');
+
+        (new QueryBuilder($this->db, 'users'))->orderBy('name; DROP TABLE users--')->get();
+    }
+
+    /**
+     * @return void
+     */
+    public function test_invalid_column_in_group_by_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid SQL identifier');
+
+        (new QueryBuilder($this->db, 'users'))->groupBy('active; DROP TABLE users--')->get();
+    }
+
+    /**
+     * @return void
+     */
+    public function test_invalid_column_in_join_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid SQL identifier');
+
+        (new QueryBuilder($this->db, 'users'))
+            ->join('orders; DROP TABLE orders--', 'users.id', '=', 'orders.user_id')
+            ->get();
+    }
+
+    /**
+     * @return void
+     */
+    public function test_invalid_column_in_sum_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid SQL identifier');
+
+        (new QueryBuilder($this->db, 'users'))->sum('score; DROP TABLE users--');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_invalid_column_in_increment_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid SQL identifier');
+
+        (new QueryBuilder($this->db, 'users'))->increment('score; DROP TABLE users--');
+    }
 }

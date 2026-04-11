@@ -30,7 +30,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->id();
 
-        $this->assertSame('CREATE TABLE t (id INTEGER PRIMARY KEY)', $bp->toCreateSql('t'));
+        $this->assertSame('CREATE TABLE `t` (`id` INTEGER PRIMARY KEY)', $bp->toCreateSql('t'));
     }
 
     /**
@@ -41,7 +41,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->id();
 
-        $this->assertSame('CREATE TABLE t (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY)', $bp->toCreateSql('t'));
+        $this->assertSame('CREATE TABLE `t` (`id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY)', $bp->toCreateSql('t'));
     }
 
     /**
@@ -52,7 +52,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->string('name');
 
-        $this->assertStringContainsString('name VARCHAR(255) NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`name` VARCHAR(255) NOT NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -63,7 +63,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->string('slug', 100);
 
-        $this->assertStringContainsString('slug VARCHAR(100) NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`slug` VARCHAR(100) NOT NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -74,7 +74,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->string('name');
 
-        $this->assertStringContainsString('name TEXT NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`name` TEXT NOT NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -85,7 +85,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->string('bio')->nullable();
 
-        $this->assertStringContainsString('bio VARCHAR(255) NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`bio` VARCHAR(255) NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -96,7 +96,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->string('email')->unique();
 
-        $this->assertStringContainsString('email VARCHAR(255) NOT NULL UNIQUE', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`email` VARCHAR(255) NOT NULL UNIQUE', $bp->toCreateSql('t'));
     }
 
     /**
@@ -107,7 +107,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->string('role')->default('user');
 
-        $this->assertStringContainsString("role VARCHAR(255) NOT NULL DEFAULT 'user'", $bp->toCreateSql('t'));
+        $this->assertStringContainsString("`role` VARCHAR(255) NOT NULL DEFAULT 'user'", $bp->toCreateSql('t'));
     }
 
     /**
@@ -118,7 +118,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->integer('votes')->default(0);
 
-        $this->assertStringContainsString('votes INTEGER NOT NULL DEFAULT 0', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`votes` INTEGER NOT NULL DEFAULT 0', $bp->toCreateSql('t'));
     }
 
     /**
@@ -129,7 +129,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->boolean('active')->default(true);
 
-        $this->assertStringContainsString('active TINYINT(1) NOT NULL DEFAULT 1', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`active` TINYINT(1) NOT NULL DEFAULT 1', $bp->toCreateSql('t'));
     }
 
     /**
@@ -140,7 +140,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->string('deleted_at')->nullable()->default(null);
 
-        $this->assertStringContainsString('deleted_at VARCHAR(255) NULL DEFAULT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`deleted_at` VARCHAR(255) NULL DEFAULT NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -165,8 +165,8 @@ final class BlueprintTest extends TestCase
 
         $sql = $bp->toCreateSql('t');
 
-        $this->assertStringContainsString('created_at TIMESTAMP NULL DEFAULT NULL', $sql);
-        $this->assertStringContainsString('updated_at TIMESTAMP NULL DEFAULT NULL', $sql);
+        $this->assertStringContainsString('`created_at` TIMESTAMP NULL DEFAULT NULL', $sql);
+        $this->assertStringContainsString('`updated_at` TIMESTAMP NULL DEFAULT NULL', $sql);
     }
 
     /**
@@ -177,7 +177,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->text('body');
 
-        $this->assertStringContainsString('body TEXT NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`body` TEXT NOT NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -188,7 +188,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->bigInteger('views');
 
-        $this->assertStringContainsString('views BIGINT NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`views` BIGINT NOT NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -199,7 +199,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->bigInteger('views');
 
-        $this->assertStringContainsString('views INTEGER NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`views` INTEGER NOT NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -210,7 +210,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->boolean('active');
 
-        $this->assertStringContainsString('active TINYINT(1) NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`active` TINYINT(1) NOT NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -221,7 +221,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->timestamp('verified_at')->nullable();
 
-        $this->assertStringContainsString('verified_at TIMESTAMP NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`verified_at` TIMESTAMP NULL', $bp->toCreateSql('t'));
     }
 
     /**
@@ -238,10 +238,10 @@ final class BlueprintTest extends TestCase
 
         $sql = $bp->toCreateSql('users');
 
-        $this->assertStringStartsWith('CREATE TABLE users (', $sql);
-        $this->assertStringContainsString('id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY', $sql);
-        $this->assertStringContainsString('email VARCHAR(255) NOT NULL UNIQUE', $sql);
-        $this->assertStringContainsString('active TINYINT(1) NOT NULL DEFAULT 1', $sql);
+        $this->assertStringStartsWith('CREATE TABLE `users` (', $sql);
+        $this->assertStringContainsString('`id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY', $sql);
+        $this->assertStringContainsString('`email` VARCHAR(255) NOT NULL UNIQUE', $sql);
+        $this->assertStringContainsString('`active` TINYINT(1) NOT NULL DEFAULT 1', $sql);
     }
 
     public function test_unsigned_integer_mysql(): void
@@ -249,7 +249,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->unsignedInteger('user_id');
 
-        $this->assertStringContainsString('user_id INT UNSIGNED NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`user_id` INT UNSIGNED NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_unsigned_integer_sqlite(): void
@@ -257,7 +257,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->unsignedInteger('user_id');
 
-        $this->assertStringContainsString('user_id INTEGER NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`user_id` INTEGER NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_float_column(): void
@@ -265,7 +265,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->float('price');
 
-        $this->assertStringContainsString('price FLOAT NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`price` FLOAT NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_decimal_mysql(): void
@@ -273,7 +273,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->decimal('amount', 10, 4);
 
-        $this->assertStringContainsString('amount DECIMAL(10,4) NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`amount` DECIMAL(10,4) NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_decimal_sqlite(): void
@@ -281,7 +281,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->decimal('amount');
 
-        $this->assertStringContainsString('amount NUMERIC(8,2) NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`amount` NUMERIC(8,2) NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_date_mysql(): void
@@ -289,7 +289,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->date('birthday');
 
-        $this->assertStringContainsString('birthday DATE NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`birthday` DATE NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_date_sqlite(): void
@@ -297,7 +297,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->date('birthday');
 
-        $this->assertStringContainsString('birthday TEXT NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`birthday` TEXT NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_json_mysql(): void
@@ -305,7 +305,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->json('meta');
 
-        $this->assertStringContainsString('meta JSON NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`meta` JSON NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_json_sqlite(): void
@@ -313,7 +313,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->json('meta');
 
-        $this->assertStringContainsString('meta TEXT NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`meta` TEXT NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_boolean_sqlite(): void
@@ -321,7 +321,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->boolean('active');
 
-        $this->assertStringContainsString('active INTEGER NOT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`active` INTEGER NOT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_timestamp_sqlite(): void
@@ -329,7 +329,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('sqlite');
         $bp->timestamp('verified_at')->nullable();
 
-        $this->assertStringContainsString('verified_at TEXT NULL', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`verified_at` TEXT NULL', $bp->toCreateSql('t'));
     }
 
     public function test_timestamps_sqlite(): void
@@ -339,8 +339,8 @@ final class BlueprintTest extends TestCase
 
         $sql = $bp->toCreateSql('t');
 
-        $this->assertStringContainsString('created_at TEXT NULL DEFAULT NULL', $sql);
-        $this->assertStringContainsString('updated_at TEXT NULL DEFAULT NULL', $sql);
+        $this->assertStringContainsString('`created_at` TEXT NULL DEFAULT NULL', $sql);
+        $this->assertStringContainsString('`updated_at` TEXT NULL DEFAULT NULL', $sql);
     }
 
     public function test_default_float_modifier(): void
@@ -348,7 +348,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->float('rate')->default(1.5);
 
-        $this->assertStringContainsString('rate FLOAT NOT NULL DEFAULT 1.5', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`rate` FLOAT NOT NULL DEFAULT 1.5', $bp->toCreateSql('t'));
     }
 
     public function test_default_false_bool_modifier(): void
@@ -356,7 +356,7 @@ final class BlueprintTest extends TestCase
         $bp = new Blueprint('mysql');
         $bp->boolean('active')->default(false);
 
-        $this->assertStringContainsString('active TINYINT(1) NOT NULL DEFAULT 0', $bp->toCreateSql('t'));
+        $this->assertStringContainsString('`active` TINYINT(1) NOT NULL DEFAULT 0', $bp->toCreateSql('t'));
     }
 
     public function test_alter_mode_adds_column(): void
@@ -367,8 +367,8 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('users');
 
         $this->assertCount(1, $stmts);
-        $this->assertStringContainsString('ALTER TABLE users ADD COLUMN', $stmts[0]);
-        $this->assertStringContainsString('nickname VARCHAR(255) NOT NULL', $stmts[0]);
+        $this->assertStringContainsString('ALTER TABLE `users` ADD COLUMN', $stmts[0]);
+        $this->assertStringContainsString('`nickname` VARCHAR(255) NOT NULL', $stmts[0]);
     }
 
     public function test_drop_column(): void
@@ -379,7 +379,7 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('users');
 
         $this->assertCount(1, $stmts);
-        $this->assertSame('ALTER TABLE users DROP COLUMN old_col', $stmts[0]);
+        $this->assertSame('ALTER TABLE `users` DROP COLUMN `old_col`', $stmts[0]);
     }
 
     public function test_rename_column(): void
@@ -390,7 +390,7 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('users');
 
         $this->assertCount(1, $stmts);
-        $this->assertSame('ALTER TABLE users RENAME COLUMN old_name TO new_name', $stmts[0]);
+        $this->assertSame('ALTER TABLE `users` RENAME COLUMN `old_name` TO `new_name`', $stmts[0]);
     }
 
     public function test_foreign_key_in_create(): void
@@ -401,7 +401,7 @@ final class BlueprintTest extends TestCase
 
         $sql = $bp->toCreateSql('posts');
 
-        $this->assertStringContainsString('FOREIGN KEY (user_id) REFERENCES users(id)', $sql);
+        $this->assertStringContainsString('FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)', $sql);
     }
 
     public function test_foreign_key_in_alter(): void
@@ -412,7 +412,7 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('posts');
 
         $this->assertCount(1, $stmts);
-        $this->assertStringContainsString('ADD FOREIGN KEY (user_id) REFERENCES users(id)', $stmts[0]);
+        $this->assertStringContainsString('ADD FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)', $stmts[0]);
     }
 
     public function test_foreign_key_skipped_in_sqlite_alter(): void
@@ -434,7 +434,7 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toIndexSql('users');
 
         $this->assertCount(1, $stmts);
-        $this->assertStringContainsString('CREATE INDEX users_email_index ON users (email)', $stmts[0]);
+        $this->assertStringContainsString('CREATE INDEX `users_email_index` ON `users` (`email`)', $stmts[0]);
     }
 
     public function test_index_with_custom_name(): void
@@ -446,7 +446,7 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toIndexSql('users');
 
         $this->assertCount(1, $stmts);
-        $this->assertSame('CREATE INDEX idx_full_name ON users (first_name, last_name)', $stmts[0]);
+        $this->assertSame('CREATE INDEX `idx_full_name` ON `users` (`first_name`, `last_name`)', $stmts[0]);
     }
 
     // =========================================================================
@@ -477,7 +477,7 @@ final class BlueprintTest extends TestCase
         $sql = $bp->toCreateSql('t');
 
         $this->assertStringContainsString('TEXT', $sql);
-        $this->assertStringContainsString("CHECK (status IN ('active', 'inactive'))", $sql);
+        $this->assertStringContainsString("CHECK (`status` IN ('active', 'inactive'))", $sql);
     }
 
     /**
@@ -506,7 +506,7 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('users');
 
         $this->assertCount(1, $stmts);
-        $this->assertStringContainsString('ADD COLUMN email VARCHAR(255) NOT NULL AFTER name', $stmts[0]);
+        $this->assertStringContainsString('ADD COLUMN `email` VARCHAR(255) NOT NULL AFTER `name`', $stmts[0]);
     }
 
     /**
@@ -520,7 +520,7 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('users');
 
         $this->assertCount(1, $stmts);
-        $this->assertStringContainsString('ADD COLUMN sort_order INTEGER NOT NULL FIRST', $stmts[0]);
+        $this->assertStringContainsString('ADD COLUMN `sort_order` INTEGER NOT NULL FIRST', $stmts[0]);
     }
 
     /**
@@ -534,7 +534,7 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('users');
 
         $this->assertCount(1, $stmts);
-        $this->assertStringContainsString('MODIFY COLUMN name VARCHAR(255) NOT NULL', $stmts[0]);
+        $this->assertStringContainsString('MODIFY COLUMN `name` VARCHAR(255) NOT NULL', $stmts[0]);
     }
 
     /**
@@ -549,5 +549,36 @@ final class BlueprintTest extends TestCase
 
         // SQLite does not support MODIFY COLUMN — should produce no statements
         $this->assertCount(0, $stmts);
+    }
+
+    // =========================================================================
+    // Security: identifier validation
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_invalid_table_name_throws_in_create(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid SQL identifier');
+
+        $bp = new Blueprint('mysql');
+        $bp->id();
+        $bp->toCreateSql('users; DROP TABLE users--');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_invalid_index_name_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid SQL identifier');
+
+        $bp = new Blueprint('mysql');
+        $bp->id();
+        $bp->index('email', 'bad name!');
+        $bp->toIndexSql('users');
     }
 }

@@ -73,7 +73,7 @@ final readonly class Schema
      */
     public function drop(string $table): void
     {
-        $this->db->getPdo()->exec('DROP TABLE ' . $table);
+        $this->db->getPdo()->exec('DROP TABLE ' . $this->quoteIdentifier($table));
     }
 
     /**
@@ -83,7 +83,7 @@ final readonly class Schema
      */
     public function dropIfExists(string $table): void
     {
-        $this->db->getPdo()->exec('DROP TABLE IF EXISTS ' . $table);
+        $this->db->getPdo()->exec('DROP TABLE IF EXISTS ' . $this->quoteIdentifier($table));
     }
 
     /**
@@ -122,9 +122,7 @@ final readonly class Schema
     public function hasColumn(string $table, string $column): bool
     {
         if ($this->isSqlite()) {
-            // PRAGMA table_info() is used as a table-valued function.
-            // Note: $table is developer-supplied (not user input); direct interpolation is acceptable here.
-            $stmt = $this->db->getPdo()->query('PRAGMA table_info(' . $table . ')');
+            $stmt = $this->db->getPdo()->query('PRAGMA table_info(' . $this->quoteIdentifier($table) . ')');
             $rows = $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
             foreach ($rows as $row) {
@@ -156,8 +154,7 @@ final readonly class Schema
     public function getColumns(string $table): array
     {
         if ($this->isSqlite()) {
-            // Note: $table is developer-supplied (not user input); direct interpolation is acceptable here.
-            $stmt = $this->db->getPdo()->query('PRAGMA table_info(' . $table . ')');
+            $stmt = $this->db->getPdo()->query('PRAGMA table_info(' . $this->quoteIdentifier($table) . ')');
             $rows = $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
             $result = [];
@@ -201,5 +198,27 @@ final readonly class Schema
     private function isSqlite(): bool
     {
         return $this->driver === 'sqlite';
+    }
+
+    /**
+     * Quote and validate a DDL identifier (table or column name).
+     *
+     * DDL statements cannot be parameterized, so identifiers must be
+     * validated and quoted explicitly. Throws InvalidArgumentException
+     * for names containing characters outside `[a-zA-Z0-9_]`.
+     *
+     * @param string $name
+     *
+     * @return string
+     */
+    private function quoteIdentifier(string $name): string
+    {
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+            throw new \InvalidArgumentException(
+                "Invalid SQL identifier: '$name'. Only alphanumeric characters and underscores are allowed."
+            );
+        }
+
+        return '`' . $name . '`';
     }
 }

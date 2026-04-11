@@ -282,6 +282,38 @@ abstract class AbstractRepository implements RepositoryInterface
     }
 
     /**
+     * Atomically increment a numeric column on the entity's row, bypassing dirty tracking.
+     *
+     * Issues a direct UPDATE column = column + amount without going through save().
+     * The entity's in-memory attribute is updated to reflect the change, and the
+     * snapshot is refreshed so a subsequent save() does not overwrite the DB-side increment.
+     *
+     * @param T         $entity
+     * @param string    $column
+     * @param int|float $amount
+     *
+     * @return int Rows affected
+     */
+    public function incrementColumn(object $entity, string $column, int|float $amount = 1): int
+    {
+        $entityClass = $this->entityClass();
+        $table = $entityClass::resolveTable();
+        $pk = $entityClass::scalarPrimaryKey();
+        $id = $entity->getAttribute($pk);
+
+        $affected = (new QueryBuilder($this->db, $table))
+            ->where($pk, $id)
+            ->increment($column, $amount);
+
+        $current = $entity->getAttribute($column);
+        $entity->setAttribute($column, is_numeric($current) ? $current + $amount : $amount);
+
+        $this->trackSnapshot($entity);
+
+        return $affected;
+    }
+
+    /**
      * Return a new EntityQueryBuilder for this repository (with soft-delete filter).
      *
      * @return EntityQueryBuilder<T>

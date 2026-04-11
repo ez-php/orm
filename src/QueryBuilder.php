@@ -659,6 +659,48 @@ final class QueryBuilder
     }
 
     /**
+     * Atomically increment a column value by the given amount.
+     *
+     * Generates: UPDATE table SET column = column + ? [WHERE ...]
+     *
+     * @param string    $column
+     * @param int|float $amount
+     *
+     * @return int Rows affected
+     */
+    public function increment(string $column, int|float $amount = 1): int
+    {
+        $sql = 'UPDATE ' . $this->table . ' SET ' . $column . ' = ' . $column . ' + ?' . $this->buildWhere();
+        $bindings = array_merge([$amount], $this->collectWhereBindings());
+
+        $stmt = $this->db->getPdo()->prepare($sql);
+        $stmt->execute($bindings);
+
+        return $stmt->rowCount();
+    }
+
+    /**
+     * Atomically decrement a column value by the given amount.
+     *
+     * Generates: UPDATE table SET column = column - ? [WHERE ...]
+     *
+     * @param string    $column
+     * @param int|float $amount
+     *
+     * @return int Rows affected
+     */
+    public function decrement(string $column, int|float $amount = 1): int
+    {
+        $sql = 'UPDATE ' . $this->table . ' SET ' . $column . ' = ' . $column . ' - ?' . $this->buildWhere();
+        $bindings = array_merge([$amount], $this->collectWhereBindings());
+
+        $stmt = $this->db->getPdo()->prepare($sql);
+        $stmt->execute($bindings);
+
+        return $stmt->rowCount();
+    }
+
+    /**
      * Paginate the query results.
      *
      * @param int $perPage

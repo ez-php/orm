@@ -238,6 +238,26 @@ final class CompositeRepository extends AbstractRepository
     }
 }
 
+final class CounterEntity extends Entity
+{
+    protected static string $table = 'counters';
+
+    protected static array $fillable = ['count'];
+
+    protected static array $casts = ['count' => 'int'];
+}
+
+/**
+ * @extends AbstractRepository<CounterEntity>
+ */
+final class CounterRepository extends AbstractRepository
+{
+    protected function entityClass(): string
+    {
+        return CounterEntity::class;
+    }
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[CoversClass(AbstractRepository::class)]
@@ -264,6 +284,8 @@ final class RepositoryTest extends RepositoryTestCase
 
     private CompositeRepository $composite;
 
+    private CounterRepository $counters;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -278,6 +300,7 @@ final class RepositoryTest extends RepositoryTestCase
         $this->softDelete = new SoftDeleteRepository($this->db, $h);
         $this->casts = new CastRepository($this->db, $h);
         $this->composite = new CompositeRepository($this->db, $h);
+        $this->counters = new CounterRepository($this->db, $h);
 
         // Wire repositories for relation tests
         $this->users->setPostRepo($this->posts);
@@ -297,6 +320,7 @@ final class RepositoryTest extends RepositoryTestCase
         $this->exec('CREATE TABLE soft_delete (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, deleted_at TEXT)');
         $this->exec('CREATE TABLE cast_records (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, score TEXT, active INTEGER, tags TEXT)');
         $this->exec('CREATE TABLE composites (user_id INTEGER, role_id INTEGER, label TEXT, PRIMARY KEY (user_id, role_id))');
+        $this->exec('CREATE TABLE counters (id INTEGER PRIMARY KEY AUTOINCREMENT, count INTEGER NOT NULL DEFAULT 0)');
     }
 
     // ─── find() ──────────────────────────────────────────────────────────────
@@ -819,5 +843,50 @@ final class RepositoryTest extends RepositoryTestCase
         $relation = $this->users->tags($user);
 
         self::assertSame([], $relation->countFor([]));
+    }
+
+    // ─── incrementColumn() ───────────────────────────────────────────────────
+
+    public function testIncrementColumnByDefaultAmount(): void
+    {
+        $this->exec('INSERT INTO counters (count) VALUES (10)');
+        $entity = $this->counters->find(1);
+        assert($entity instanceof CounterEntity);
+
+        $affected = $this->counters->incrementColumn($entity, 'count');
+
+        self::assertSame(1, $affected);
+        self::assertSame(11, $entity->getAttribute('count'));
+
+        $row = $this->counters->find(1);
+        assert($row instanceof CounterEntity);
+        self::assertSame(11, $row->getAttribute('count'));
+    }
+
+    public function testIncrementColumnByCustomAmount(): void
+    {
+        $this->exec('INSERT INTO counters (count) VALUES (5)');
+        $entity = $this->counters->find(1);
+        assert($entity instanceof CounterEntity);
+
+        $this->counters->incrementColumn($entity, 'count', 7);
+
+        self::assertSame(12, $entity->getAttribute('count'));
+    }
+
+    public function testIncrementColumnDoesNotCauseSubsequentSaveToOverwrite(): void
+    {
+        $this->exec('INSERT INTO counters (count) VALUES (0)');
+        $entity = $this->counters->find(1);
+        assert($entity instanceof CounterEntity);
+
+        $this->counters->incrementColumn($entity, 'count', 3);
+
+        // save() with no other changes must be a no-op — does not revert count to 0
+        $this->counters->save($entity);
+
+        $row = $this->counters->find(1);
+        assert($row instanceof CounterEntity);
+        self::assertSame(3, $row->getAttribute('count'));
     }
 }

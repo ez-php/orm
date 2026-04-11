@@ -661,6 +661,92 @@ final class QueryBuilderTest extends TestCase
     }
 
     // =========================================================================
+    // Feature 3: increment / decrement
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_increment_increases_column_by_one(): void
+    {
+        (new QueryBuilder($this->db, 'users'))->where('name', 'Alice')->increment('score');
+
+        $row = (new QueryBuilder($this->db, 'users'))->where('name', 'Alice')->first();
+        $this->assertNotNull($row);
+        $this->assertSame(11.0, $row['score']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_increment_increases_column_by_custom_amount(): void
+    {
+        (new QueryBuilder($this->db, 'users'))->where('name', 'Alice')->increment('score', 5);
+
+        $row = (new QueryBuilder($this->db, 'users'))->where('name', 'Alice')->first();
+        $this->assertNotNull($row);
+        $this->assertSame(15.0, $row['score']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_decrement_decreases_column_by_one(): void
+    {
+        (new QueryBuilder($this->db, 'users'))->where('name', 'Bob')->decrement('score');
+
+        $row = (new QueryBuilder($this->db, 'users'))->where('name', 'Bob')->first();
+        $this->assertNotNull($row);
+        $this->assertSame(19.0, $row['score']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_decrement_decreases_column_by_custom_amount(): void
+    {
+        (new QueryBuilder($this->db, 'users'))->where('name', 'Charlie')->decrement('score', 10);
+
+        $row = (new QueryBuilder($this->db, 'users'))->where('name', 'Charlie')->first();
+        $this->assertNotNull($row);
+        $this->assertSame(20.0, $row['score']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_increment_without_where_affects_all_rows(): void
+    {
+        $affected = (new QueryBuilder($this->db, 'users'))->increment('score', 100);
+
+        $this->assertSame(3, $affected);
+        $rows = (new QueryBuilder($this->db, 'users'))->orderBy('id')->get();
+        $this->assertSame(110.0, $rows[0]['score']);
+        $this->assertSame(120.0, $rows[1]['score']);
+        $this->assertSame(130.0, $rows[2]['score']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_increment_returns_affected_row_count(): void
+    {
+        $affected = (new QueryBuilder($this->db, 'users'))->where('active', 1)->increment('score');
+
+        $this->assertSame(2, $affected);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_decrement_returns_affected_row_count(): void
+    {
+        $affected = (new QueryBuilder($this->db, 'users'))->where('active', 0)->decrement('score');
+
+        $this->assertSame(1, $affected);
+    }
+
+    // =========================================================================
     // Feature 14: whereExists / whereNotExists
     // =========================================================================
 

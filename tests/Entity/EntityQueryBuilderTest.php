@@ -327,4 +327,28 @@ final class EntityQueryBuilderTest extends RepositoryTestCase
 
         $this->articles->query()->__call('nonexistent', []);
     }
+
+    public function testPaginateThrowsOnPageZero(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('page must be >= 1');
+
+        $this->articles->query()->paginate(15, 0);
+    }
+
+    public function testPaginateThrowsOnNegativePage(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('page must be >= 1');
+
+        $this->articles->query()->paginate(15, -3);
+    }
+
+    public function testPaginateThrowsOnPerPageZero(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('perPage must be >= 1');
+
+        $this->articles->query()->paginate(0, 1);
+    }
 }

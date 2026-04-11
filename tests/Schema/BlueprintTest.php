@@ -491,6 +491,53 @@ final class BlueprintTest extends TestCase
         $bp->enum('status', []);
     }
 
+    /**
+     * @return void
+     */
+    public function test_enum_throws_on_empty_string_value(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('must not be empty strings');
+
+        $bp = new Blueprint('mysql');
+        $bp->enum('status', ['active', '']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_enum_throws_on_unsafe_value(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('contains unsafe characters');
+
+        $bp = new Blueprint('mysql');
+        $bp->enum('status', ["active'; DROP TABLE users--"]);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_enum_throws_on_value_with_space(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('contains unsafe characters');
+
+        $bp = new Blueprint('mysql');
+        $bp->enum('status', ['active value']);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_enum_allows_hyphen_in_value(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->enum('status', ['active', 'in-progress', 'done_2']);
+
+        $this->assertStringContainsString("ENUM('active', 'in-progress', 'done_2')", $bp->toCreateSql('t'));
+    }
+
     // =========================================================================
     // Feature 14: Column Modifiers (after/first/change)
     // =========================================================================

@@ -879,4 +879,66 @@ final class QueryBuilderTest extends TestCase
 
         (new QueryBuilder($this->db, 'users'))->increment('score; DROP TABLE users--');
     }
+
+    /**
+     * @return void
+     */
+    public function test_paginate_with_page_zero_throws(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('page must be >= 1');
+
+        (new QueryBuilder($this->db, 'users'))->paginate(15, 0);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_paginate_with_negative_page_throws(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('page must be >= 1');
+
+        (new QueryBuilder($this->db, 'users'))->paginate(15, -1);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_join_with_invalid_operator_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid JOIN operator');
+
+        (new QueryBuilder($this->db, 'users'))
+            ->join('orders', 'users.id', 'LIKE', 'orders.user_id')
+            ->get();
+    }
+
+    /**
+     * @return void
+     */
+    public function test_left_join_with_invalid_operator_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid JOIN operator');
+
+        (new QueryBuilder($this->db, 'users'))
+            ->leftJoin('orders', 'users.id', '!=', 'orders.user_id')
+            ->get();
+    }
+
+    /**
+     * @return void
+     */
+    public function test_join_accepts_all_valid_operators(): void
+    {
+        foreach (['=', '<', '>', '<=', '>=', '<>'] as $operator) {
+            $qb = (new QueryBuilder($this->db, 'users'))
+                ->join('orders', 'users.id', $operator, 'orders.user_id');
+
+            // No exception thrown — just verify the SQL is built
+            $this->assertStringContainsString($operator, $qb->toSql());
+        }
+    }
 }

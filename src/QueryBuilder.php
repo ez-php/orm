@@ -253,6 +253,7 @@ final class QueryBuilder
      */
     public function join(string $table, string $first, string $operator, string $second): self
     {
+        $this->assertJoinOperator($operator);
         $clone = clone $this;
         $clone->joins[] = ['type' => 'INNER', 'table' => $table, 'first' => $first, 'operator' => $operator, 'second' => $second];
 
@@ -269,6 +270,7 @@ final class QueryBuilder
      */
     public function leftJoin(string $table, string $first, string $operator, string $second): self
     {
+        $this->assertJoinOperator($operator);
         $clone = clone $this;
         $clone->joins[] = ['type' => 'LEFT', 'table' => $table, 'first' => $first, 'operator' => $operator, 'second' => $second];
 
@@ -744,6 +746,10 @@ final class QueryBuilder
             throw new \InvalidArgumentException("perPage must be >= 1, got $perPage.");
         }
 
+        if ($page < 1) {
+            throw new \InvalidArgumentException("page must be >= 1, got $page.");
+        }
+
         $total = $this->count();
         $items = $this->limit($perPage)->offset(($page - 1) * $perPage)->get();
 
@@ -814,6 +820,33 @@ final class QueryBuilder
     // -------------------------------------------------------------------------
     // PRIVATE HELPERS
     // -------------------------------------------------------------------------
+
+    /**
+     * @param string $boolean
+     * @param string $column
+     * @param mixed  $operatorOrValue
+     * @param mixed  $value
+     *
+     * @return self
+     */
+    /**
+     * Validate that a join operator is in the allowed whitelist.
+     *
+     * @param string $operator
+     *
+     * @return void
+     * @throws InvalidArgumentException When the operator is not whitelisted.
+     */
+    private function assertJoinOperator(string $operator): void
+    {
+        static $allowed = ['=', '<', '>', '<=', '>=', '<>'];
+
+        if (!in_array($operator, $allowed, true)) {
+            throw new InvalidArgumentException(
+                "Invalid JOIN operator: '$operator'. Allowed: " . implode(', ', $allowed) . '.'
+            );
+        }
+    }
 
     /**
      * @param string $boolean

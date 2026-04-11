@@ -223,6 +223,18 @@ final class Blueprint
             throw new InvalidArgumentException('enum() requires at least one value.');
         }
 
+        foreach ($values as $v) {
+            if ($v === '') {
+                throw new InvalidArgumentException('enum() values must not be empty strings.');
+            }
+
+            if (!preg_match('/^[a-zA-Z0-9_\-]+$/', $v)) {
+                throw new InvalidArgumentException(
+                    "enum() value '$v' contains unsafe characters. Only alphanumeric characters, underscores, and hyphens are allowed."
+                );
+            }
+        }
+
         $escapedValues = array_map(static fn (string $v) => "'" . str_replace("'", "''", $v) . "'", $values);
 
         if ($this->isSqlite()) {

@@ -253,6 +253,14 @@ final class EntityQueryBuilder
      */
     public function paginate(int $perPage = 15, int $page = 1): Paginator
     {
+        if ($perPage < 1) {
+            throw new \InvalidArgumentException("perPage must be >= 1, got $perPage.");
+        }
+
+        if ($page < 1) {
+            throw new \InvalidArgumentException("page must be >= 1, got $page.");
+        }
+
         $total = $this->builder->count();
         $rows = $this->builder->limit($perPage)->offset(($page - 1) * $perPage)->get();
 

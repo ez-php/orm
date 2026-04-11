@@ -347,9 +347,14 @@ final class QueryBuilder
      * @param int $limit
      *
      * @return self
+     * @throws InvalidArgumentException When $limit is less than 1.
      */
     public function limit(int $limit): self
     {
+        if ($limit < 1) {
+            throw new InvalidArgumentException("limit() must be >= 1, got $limit.");
+        }
+
         $clone = clone($this, [
             'limitValue' => $limit,
         ]);
@@ -361,9 +366,14 @@ final class QueryBuilder
      * @param int $offset
      *
      * @return self
+     * @throws InvalidArgumentException When $offset is negative.
      */
     public function offset(int $offset): self
     {
+        if ($offset < 0) {
+            throw new InvalidArgumentException("offset() must be >= 0, got $offset.");
+        }
+
         $clone = clone($this, [
             'offsetValue' => $offset,
         ]);
@@ -1019,7 +1029,7 @@ final class QueryBuilder
             return '';
         }
 
-        return ' GROUP BY ' . implode(', ', array_map($this->quoteIdentifier(...), $this->groupBys));
+        return ' GROUP BY ' . $this->quoteIdentifiers($this->groupBys);
     }
 
     /**
@@ -1033,7 +1043,8 @@ final class QueryBuilder
 
         $clauses = [];
         foreach ($this->havings as $having) {
-            $clauses[] = "{$having['column']} {$having['operator']} ?";
+            $col = $this->quoteIdentifierIfSimple($having['column']);
+            $clauses[] = "{$col} {$having['operator']} ?";
         }
 
         return ' HAVING ' . implode(' AND ', $clauses);
@@ -1091,6 +1102,42 @@ final class QueryBuilder
         }, $parts);
 
         return implode('.', $quoted);
+    }
+
+    /**
+     * Quote the given name if it is a simple identifier (alphanumeric, underscores, dots, or
+     * the bare wildcard `*`), otherwise return it unchanged as a raw SQL expression.
+     *
+     * This is used in contexts like HAVING where both column names (`amount`) and aggregate
+     * expressions (`COUNT(*)`) are valid inputs. A raw expression that contains parentheses,
+     * spaces, or other special characters is passed through without modification.
+     *
+     * @param string $name
+     *
+     * @return string
+     */
+    private function quoteIdentifierIfSimple(string $name): string
+    {
+        if (preg_match('/^[a-zA-Z0-9_.*]+$/', $name)) {
+            return $this->quoteIdentifier($name);
+        }
+
+        return $name;
+    }
+
+    /**
+     * Quote and join multiple SQL identifiers with a comma separator.
+     *
+     * Convenience wrapper around quoteIdentifier() for use in GROUP BY and
+     * similar multi-column clauses.
+     *
+     * @param list<string> $cols
+     *
+     * @return string
+     */
+    private function quoteIdentifiers(array $cols): string
+    {
+        return implode(', ', array_map($this->quoteIdentifier(...), $cols));
     }
 
     /**

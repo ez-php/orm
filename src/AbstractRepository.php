@@ -24,6 +24,15 @@ use SplObjectStorage;
  * which contradicts the Data Mapper principle of entities being unaware of the DB.
  * SplObjectStorage keyed by entity identity keeps entities clean.
  *
+ * ## Soft-delete bypass warning
+ *
+ * When an entity's `$softDeletes` is `true`, the repository's `query()` method automatically
+ * appends `WHERE deleted_at IS NULL` to filter out soft-deleted rows. This filter exists
+ * **only at the ORM/repository layer**. Any code that bypasses the repository — raw PDO
+ * queries, direct `QueryBuilder` calls, or other tools that access the same table — will
+ * see soft-deleted rows without warning. Always go through the repository for reads on
+ * soft-deletable entities, or explicitly add `AND deleted_at IS NULL` to raw queries.
+ *
  * Relation helper methods (hasMany, hasOne, belongsTo, belongsToMany) are protected
  * and intended to be called from public relation methods on concrete repository subclasses.
  *

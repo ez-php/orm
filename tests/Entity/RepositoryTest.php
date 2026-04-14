@@ -116,6 +116,7 @@ final class UserRepository extends AbstractRepository
     // Relation methods accept Entity (base type) because EntityQueryBuilder calls them
     // with a generic Entity instance; callers that have concrete types may also pass UserEntity.
 
+    /** @return EntityHasMany<PostEntity> */
     public function posts(Entity $user): EntityHasMany
     {
         assert($this->postRepo !== null);
@@ -123,6 +124,7 @@ final class UserRepository extends AbstractRepository
         return $this->hasMany($this->postRepo, 'user_id', 'id', $user->getAttribute('id'));
     }
 
+    /** @return EntityHasOne<ProfileEntity> */
     public function profile(Entity $user): EntityHasOne
     {
         assert($this->profileRepo !== null);
@@ -130,6 +132,7 @@ final class UserRepository extends AbstractRepository
         return $this->hasOne($this->profileRepo, 'user_id', 'id', $user->getAttribute('id'));
     }
 
+    /** @return EntityBelongsToMany<TagEntity> */
     public function tags(Entity $user): EntityBelongsToMany
     {
         assert($this->tagRepo !== null);
@@ -164,6 +167,7 @@ final class PostRepository extends AbstractRepository
         return PostEntity::class;
     }
 
+    /** @return EntityBelongsTo<UserEntity> */
     public function user(Entity $post): EntityBelongsTo
     {
         assert($this->userRepo !== null);

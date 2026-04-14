@@ -14,15 +14,17 @@ use EzPhp\Orm\Entity;
  * The FK lives on the owning entity (e.g. 'user_id' on Post); the related
  * entity's PK is the join key (e.g. 'id' on User).
  *
+ * @template TRelated of Entity
+ *
  * @package EzPhp\Orm\Relations
  */
 final class EntityBelongsTo extends EntityRelation
 {
     /**
-     * @param AbstractRepository<Entity> $relatedRepo  Repository managing the related entity
-     * @param string                     $foreignKey   FK column on the owning entity (e.g. 'user_id')
-     * @param string                     $localKey     PK column on the related entity (e.g. 'id')
-     * @param mixed                      $fkValue      FK value on the owning entity (for lazy load)
+     * @param AbstractRepository<TRelated> $relatedRepo  Repository managing the related entity
+     * @param string                       $foreignKey   FK column on the owning entity (e.g. 'user_id')
+     * @param string                       $localKey     PK column on the related entity (e.g. 'id')
+     * @param mixed                        $fkValue      FK value on the owning entity (for lazy load)
      */
     public function __construct(
         private readonly AbstractRepository $relatedRepo,

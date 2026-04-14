@@ -389,7 +389,7 @@ abstract class AbstractRepository implements RepositoryInterface
      * @param string                       $localKey     PK on the owning entity
      * @param mixed                        $ownerValue   Owning entity's PK value
      *
-     * @return EntityHasMany
+     * @return EntityHasMany<TRelated>
      */
     protected function hasMany(
         AbstractRepository $relatedRepo,
@@ -410,7 +410,7 @@ abstract class AbstractRepository implements RepositoryInterface
      * @param string                       $localKey     PK on the owning entity
      * @param mixed                        $ownerValue   Owning entity's PK value
      *
-     * @return EntityHasOne
+     * @return EntityHasOne<TRelated>
      */
     protected function hasOne(
         AbstractRepository $relatedRepo,
@@ -431,7 +431,7 @@ abstract class AbstractRepository implements RepositoryInterface
      * @param string                       $localKey     PK on the related entity (e.g. 'id')
      * @param mixed                        $fkValue      FK value on the owning entity
      *
-     * @return EntityBelongsTo
+     * @return EntityBelongsTo<TRelated>
      */
     protected function belongsTo(
         AbstractRepository $relatedRepo,
@@ -456,7 +456,7 @@ abstract class AbstractRepository implements RepositoryInterface
      * @param string                       $relatedLocalKey  PK on related entity
      * @param mixed                        $localValue       Owning entity's PK value
      *
-     * @return EntityBelongsToMany
+     * @return EntityBelongsToMany<TRelated>
      */
     protected function belongsToMany(
         AbstractRepository $relatedRepo,

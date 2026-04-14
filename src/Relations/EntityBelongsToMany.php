@@ -19,13 +19,15 @@ use EzPhp\Orm\QueryBuilder;
  * The '__pivot_fk' alias is an implementation detail used by match() to group
  * eager-loaded results back onto their owning entities.
  *
+ * @template TRelated of Entity
+ *
  * @package EzPhp\Orm\Relations
  */
 final class EntityBelongsToMany extends EntityRelation
 {
     /**
-     * @param DatabaseInterface          $db
-     * @param AbstractRepository<Entity> $relatedRepo      Repository managing the related entity
+     * @param DatabaseInterface            $db
+     * @param AbstractRepository<TRelated> $relatedRepo      Repository managing the related entity
      * @param string             $relatedTable     Table of the related entity
      * @param string             $pivotTable       Pivot table name
      * @param string             $foreignKey       FK in pivot pointing to owning entity

@@ -13,15 +13,17 @@ use EzPhp\Orm\Entity;
  * One-to-one relation for the Data Mapper pattern.
  * The FK lives on the related entity; the owning entity's PK is the join key.
  *
+ * @template TRelated of Entity
+ *
  * @package EzPhp\Orm\Relations
  */
 final class EntityHasOne extends EntityRelation
 {
     /**
-     * @param AbstractRepository<Entity> $relatedRepo  Repository managing the related entity
-     * @param string                     $foreignKey   FK column on the related entity
-     * @param string                     $localKey     PK column on the owning entity
-     * @param mixed                      $ownerValue   Owning entity's PK value (for lazy load)
+     * @param AbstractRepository<TRelated> $relatedRepo  Repository managing the related entity
+     * @param string                       $foreignKey   FK column on the related entity
+     * @param string                       $localKey     PK column on the owning entity
+     * @param mixed                        $ownerValue   Owning entity's PK value (for lazy load)
      */
     public function __construct(
         private readonly AbstractRepository $relatedRepo,

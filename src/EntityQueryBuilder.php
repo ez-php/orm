@@ -50,6 +50,26 @@ final class EntityQueryBuilder
     }
 
     /**
+     * Restrict the SELECT column list.
+     *
+     * When called, only the specified columns are fetched from the database.
+     * Attributes not in the list will not be set on the hydrated entities.
+     *
+     * Useful for bulk-reads where loading every column is wasteful:
+     *   $repo->query()->select('id', 'energy', 'zone_id')->get()
+     *
+     * @param string ...$columns
+     *
+     * @return self<T>
+     */
+    public function select(string ...$columns): self
+    {
+        return clone($this, [
+            'builder' => $this->builder->select(...$columns),
+        ]);
+    }
+
+    /**
      * @param string $column
      * @param mixed  $operatorOrValue
      * @param mixed  $value

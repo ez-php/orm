@@ -421,6 +421,114 @@ final class RepositoryTest extends RepositoryTestCase
         self::assertCount(2, $all);
     }
 
+    public function testFindAllWithLimitReturnsBoundedSet(): void
+    {
+        for ($i = 1; $i <= 5; $i++) {
+            $this->exec("INSERT INTO users (name) VALUES ('User$i')");
+        }
+
+        $all = $this->users->findAll(3);
+
+        self::assertCount(3, $all);
+    }
+
+    public function testFindAllWithLimitAndOffsetSkipsRows(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO users (name) VALUES ('Bob')");
+        $this->exec("INSERT INTO users (name) VALUES ('Carol')");
+
+        // limit=2, offset=1 → skip Alice, return Bob+Carol
+        $all = $this->users->findAll(2, 1);
+
+        self::assertCount(2, $all);
+        self::assertSame('Bob', $all[0]->getAttribute('name'));
+        self::assertSame('Carol', $all[1]->getAttribute('name'));
+    }
+
+    public function testFindAllWithZeroLimitReturnsAll(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO users (name) VALUES ('Bob')");
+
+        // limit=0 means no limit
+        $all = $this->users->findAll(0);
+
+        self::assertCount(2, $all);
+    }
+
+    // ─── findAllWhere() ──────────────────────────────────────────────────────
+
+    public function testFindAllWhereFiltersBySingleCriteria(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO users (name) VALUES ('Bob')");
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+
+        $alices = $this->users->findAllWhere(['name' => 'Alice']);
+
+        self::assertCount(2, $alices);
+
+        foreach ($alices as $user) {
+            self::assertSame('Alice', $user->getAttribute('name'));
+        }
+    }
+
+    public function testFindAllWhereFiltersMultipleCriteria(): void
+    {
+        $this->exec("INSERT INTO users (name, email) VALUES ('Alice', 'alice@a.com')");
+        $this->exec("INSERT INTO users (name, email) VALUES ('Alice', 'alice@b.com')");
+        $this->exec("INSERT INTO users (name, email) VALUES ('Bob', 'bob@a.com')");
+
+        $results = $this->users->findAllWhere(['name' => 'Alice', 'email' => 'alice@a.com']);
+
+        self::assertCount(1, $results);
+        self::assertSame('alice@a.com', $results[0]->getAttribute('email'));
+    }
+
+    public function testFindAllWhereReturnsEmptyWhenNoMatch(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+
+        self::assertSame([], $this->users->findAllWhere(['name' => 'Nonexistent']));
+    }
+
+    public function testFindAllWhereWithLimit(): void
+    {
+        for ($i = 1; $i <= 5; $i++) {
+            $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        }
+
+        $results = $this->users->findAllWhere(['name' => 'Alice'], 3);
+
+        self::assertCount(3, $results);
+    }
+
+    public function testFindAllWhereWithLimitAndOffset(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+
+        // limit=2, offset=1 → skip first Alice
+        $results = $this->users->findAllWhere(['name' => 'Alice'], 2, 1);
+
+        self::assertCount(2, $results);
+        // The two returned entities should be rows 2 and 3
+        self::assertSame(2, $this->intAttr($results[0]));
+        self::assertSame(3, $this->intAttr($results[1]));
+    }
+
+    public function testFindAllWhereWithEmptyCriteriaReturnsAll(): void
+    {
+        $this->exec("INSERT INTO users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO users (name) VALUES ('Bob')");
+
+        $all = $this->users->findAllWhere([]);
+
+        self::assertCount(2, $all);
+    }
+
     public function testFindByReturnsMatchingEntities(): void
     {
         $this->exec("INSERT INTO users (name) VALUES ('Alice')");

@@ -192,13 +192,66 @@ abstract class AbstractRepository implements RepositoryInterface
     // ─── Additional query methods ────────────────────────────────────────────
 
     /**
-     * Return all entities (applies soft-delete filter when enabled).
+     * Return all entities, optionally bounded by limit and offset.
+     *
+     * A limit of 0 means no limit — all matching rows are returned.
+     * offset is only applied when limit > 0, since OFFSET without LIMIT is invalid SQL.
+     *
+     * Applies soft-delete filter when enabled.
+     *
+     * @param int $limit  Max rows to return; 0 = no limit.
+     * @param int $offset Number of rows to skip (only effective when limit > 0).
      *
      * @return list<T>
      */
-    public function findAll(): array
+    public function findAll(int $limit = 0, int $offset = 0): array
     {
-        return $this->query()->get();
+        $q = $this->query();
+
+        if ($limit > 0) {
+            $q = $q->limit($limit);
+
+            if ($offset > 0) {
+                $q = $q->offset($offset);
+            }
+        }
+
+        return $q->get();
+    }
+
+    /**
+     * Return all entities matching the given column–value criteria, optionally bounded.
+     *
+     * Each entry in $criteria is applied as WHERE column = value (AND).
+     * An empty $criteria array returns all entities (equivalent to findAll).
+     *
+     * A limit of 0 means no limit; offset is only applied when limit > 0.
+     *
+     * Applies soft-delete filter when enabled.
+     *
+     * @param array<string, mixed> $criteria  Column → value equality conditions.
+     * @param int                  $limit     Max rows to return; 0 = no limit.
+     * @param int                  $offset    Number of rows to skip (only effective when limit > 0).
+     *
+     * @return list<T>
+     */
+    public function findAllWhere(array $criteria, int $limit = 0, int $offset = 0): array
+    {
+        $q = $this->query();
+
+        foreach ($criteria as $column => $value) {
+            $q = $q->where($column, $value);
+        }
+
+        if ($limit > 0) {
+            $q = $q->limit($limit);
+
+            if ($offset > 0) {
+                $q = $q->offset($offset);
+            }
+        }
+
+        return $q->get();
     }
 
     /**

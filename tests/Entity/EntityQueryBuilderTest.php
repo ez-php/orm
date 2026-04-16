@@ -351,4 +351,38 @@ final class EntityQueryBuilderTest extends RepositoryTestCase
 
         $this->articles->query()->paginate(0, 1);
     }
+
+    // ─── select() ────────────────────────────────────────────────────────────
+
+    public function testSelectLimitsColumnsReturnedInEntities(): void
+    {
+        $this->seedArticles();
+
+        $results = $this->articles->query()->select('id', 'title')->get();
+
+        self::assertCount(3, $results);
+        // 'id' and 'title' are present
+        self::assertNotNull($results[0]->getAttribute('id'));
+        self::assertSame('Alpha', $results[0]->getAttribute('title'));
+        // 'published' was not selected — attribute is not in the row
+        self::assertNull($results[0]->getAttribute('published'));
+    }
+
+    public function testSelectReturnsClonesNotSameInstance(): void
+    {
+        $qb1 = $this->articles->query();
+        $qb2 = $qb1->select('id', 'title');
+
+        self::assertNotSame($qb1, $qb2);
+    }
+
+    public function testSelectCanBeChainedWithWhere(): void
+    {
+        $this->seedArticles();
+
+        $results = $this->articles->query()->select('id', 'title')->where('published', 1)->get();
+
+        self::assertCount(2, $results);
+        self::assertNull($results[0]->getAttribute('published'));
+    }
 }

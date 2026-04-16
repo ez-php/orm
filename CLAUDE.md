@@ -276,7 +276,8 @@ Both dependencies are optional — `$db` falls back to `Entity::database()`, `$h
 | `find(id)` | `T\|null` | Looks up by primary key; returns hydrated entity or null |
 | `save(T)` | `void` | INSERT if new entity (no PK); UPDATE dirty columns only if PK is set |
 | `delete(T)` | `void` | Soft-delete if `$softDeletes`; hard-delete otherwise |
-| `findAll()` | `list<T>` | Returns all rows (respects soft-delete filter) |
+| `findAll(limit, offset)` | `list<T>` | Returns all rows, optionally bounded; `limit=0` = no limit; soft-delete filter applied |
+| `findAllWhere(criteria, limit, offset)` | `list<T>` | AND-equality filter on a column map, optionally bounded |
 | `findBy(col, val)` | `list<T>` | Single-column equality filter |
 | `findOneBy(col, val)` | `T\|null` | Returns first match |
 | `findWhereIn(col, vals)` | `list<T>` | Batch lookup |
@@ -302,7 +303,7 @@ Both dependencies are optional — `$db` falls back to `Entity::database()`, `$h
 
 `@template T of Entity`. Typed wrapper over `QueryBuilder` that hydrates rows into entity instances.
 
-**Clause methods** (all return `self<T>`): `where`, `whereIn`, `whereNotIn`, `whereNull`, `whereNotNull`, `join`, `orderBy`, `limit`, `offset`.
+**Clause methods** (all return `self<T>`): `select`, `where`, `whereIn`, `whereNotIn`, `whereNull`, `whereNotNull`, `join`, `orderBy`, `limit`, `offset`.
 
 **Execution methods:**
 

@@ -6,6 +6,7 @@ namespace EzPhp\Orm\Schema;
 
 use Closure;
 use EzPhp\Contracts\DatabaseInterface;
+use EzPhp\Contracts\Schema\SchemaInterface;
 use PDO;
 
 /**
@@ -13,7 +14,7 @@ use PDO;
  *
  * @package EzPhp\Orm\Schema
  */
-final readonly class Schema
+final readonly class Schema implements SchemaInterface
 {
     private string $driver;
 
@@ -57,7 +58,20 @@ final readonly class Schema
         $blueprint = new Blueprint($this->driver, 'alter');
         $callback($blueprint);
 
-        foreach ($blueprint->toAlterSql($table) as $sql) {
+        $alterStatements = $blueprint->toAlterSql($table);
+
+        // RENAME COLUMN requires SQLite 3.25+ (released 2018-09-15).
+        // Throw a descriptive error rather than letting the PDO call fail silently.
+        if ($this->isSqlite()) {
+            foreach ($alterStatements as $sql) {
+                if (str_contains($sql, 'RENAME COLUMN')) {
+                    $this->assertSqliteMinVersion('3.25.0', 'RENAME COLUMN');
+                    break;
+                }
+            }
+        }
+
+        foreach ($alterStatements as $sql) {
             $this->db->getPdo()->exec($sql);
         }
 
@@ -109,6 +123,25 @@ final readonly class Schema
         );
 
         return $rows !== [];
+    }
+
+    /**
+     * @param string $from
+     * @param string $to
+     *
+     * @return void
+     */
+    public function rename(string $from, string $to): void
+    {
+        if ($this->isSqlite()) {
+            $this->db->getPdo()->exec(
+                'ALTER TABLE ' . $this->quoteIdentifier($from) . ' RENAME TO ' . $this->quoteIdentifier($to)
+            );
+        } else {
+            $this->db->getPdo()->exec(
+                'RENAME TABLE ' . $this->quoteIdentifier($from) . ' TO ' . $this->quoteIdentifier($to)
+            );
+        }
     }
 
     /**
@@ -190,6 +223,103 @@ final readonly class Schema
         }
 
         return $result;
+    }
+
+    /**
+     * Dump the current database schema to a SQL file.
+     *
+     * The file contains CREATE TABLE and CREATE INDEX statements that can be
+     * loaded instead of replaying all migrations from scratch.
+     *
+     * @param string $path Absolute path to the output file
+     *
+     * @return void
+     */
+    public function dump(string $path): void
+    {
+        $lines = ['-- Schema dump generated at ' . date('Y-m-d H:i:s'), ''];
+
+        foreach ($this->buildDumpStatements() as $sql) {
+            $lines[] = $sql . ';';
+            $lines[] = '';
+        }
+
+        file_put_contents($path, implode("\n", $lines));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function buildDumpStatements(): array
+    {
+        if ($this->isSqlite()) {
+            return $this->buildSqliteDump();
+        }
+
+        return $this->buildMysqlDump();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function buildSqliteDump(): array
+    {
+        $rows = $this->db->query(
+            'SELECT type, sql FROM sqlite_master'
+            . " WHERE type IN ('table', 'index')"
+            . ' AND sql IS NOT NULL'
+            . " AND name NOT LIKE 'sqlite_%'"
+            . " ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name"
+        );
+
+        $statements = [];
+        foreach ($rows as $row) {
+            $sql = $row['sql'];
+            if (is_string($sql) && $sql !== '') {
+                $statements[] = $sql;
+            }
+        }
+
+        return $statements;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function buildMysqlDump(): array
+    {
+        $tableRows = $this->db->query('SHOW TABLES');
+        $statements = [];
+
+        foreach ($tableRows as $row) {
+            $first = array_values($row)[0];
+            $table = is_string($first) ? $first : '';
+            $createRows = $this->db->query('SHOW CREATE TABLE ' . $this->quoteIdentifier($table));
+            $create = $createRows[0]['Create Table'] ?? null;
+            if (is_string($create) && $create !== '') {
+                $statements[] = $create;
+            }
+        }
+
+        return $statements;
+    }
+
+    /**
+     * @param string $minVersion e.g. '3.25.0'
+     * @param string $feature    Human-readable feature name for the error message
+     *
+     * @return void
+     */
+    private function assertSqliteMinVersion(string $minVersion, string $feature): void
+    {
+        /** @var string $version */
+        $version = $this->db->getPdo()->getAttribute(PDO::ATTR_SERVER_VERSION);
+
+        if (version_compare($version, $minVersion, '<')) {
+            throw new \RuntimeException(
+                "SQLite $version does not support $feature (requires $minVersion+)."
+            );
+        }
     }
 
     /**

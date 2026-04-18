@@ -44,6 +44,23 @@ final class Blueprint
     private array $indexes = [];
 
     /**
+     * @var list<string>
+     */
+    private array $droppedIndexes = [];
+
+    /**
+     * @var list<string>
+     */
+    private array $droppedForeignKeys = [];
+
+    private bool $dropPrimary = false;
+
+    /**
+     * @var list<string>
+     */
+    private array $droppedMorphs = [];
+
+    /**
      * Blueprint Constructor
      *
      * @param string $driver
@@ -208,6 +225,254 @@ final class Blueprint
     }
 
     /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function uuid(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'CHAR(36)';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function ulid(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'CHAR(26)';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function tinyInteger(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'INTEGER' : 'TINYINT';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function smallInteger(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'INTEGER' : 'SMALLINT';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function mediumInteger(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'INTEGER' : 'MEDIUMINT';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function unsignedBigInteger(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'INTEGER' : 'BIGINT UNSIGNED';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function unsignedTinyInteger(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'INTEGER' : 'TINYINT UNSIGNED';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function longText(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'LONGTEXT';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function mediumText(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'MEDIUMTEXT';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function tinyText(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'TINYTEXT';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function binary(string $column): ColumnDefinition
+    {
+        return $this->addColumn(new ColumnDefinition($column, 'BLOB'));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function ipAddress(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'VARCHAR(45)';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function macAddress(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'VARCHAR(17)';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function year(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'YEAR';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function time(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'TIME';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return ColumnDefinition
+     */
+    public function dateTime(string $column): ColumnDefinition
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'DATETIME';
+
+        return $this->addColumn(new ColumnDefinition($column, $type));
+    }
+
+    /**
+     * Add a nullable `deleted_at` timestamp column for soft deletes.
+     *
+     * @return void
+     */
+    public function softDeletes(): void
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'TIMESTAMP';
+
+        $this->addColumn(new ColumnDefinition('deleted_at', $type))->nullable()->default(null);
+    }
+
+    /**
+     * Add a nullable `remember_token` column for "remember me" authentication.
+     *
+     * @return void
+     */
+    public function rememberToken(): void
+    {
+        $type = $this->isSqlite() ? 'TEXT' : 'VARCHAR(100)';
+
+        $this->addColumn(new ColumnDefinition('remember_token', $type))->nullable()->default(null);
+    }
+
+    /**
+     * Add polymorphic `{name}_type VARCHAR(255)` + `{name}_id BIGINT UNSIGNED` columns with a composite index.
+     *
+     * @param string $name
+     *
+     * @return void
+     */
+    public function morphs(string $name): void
+    {
+        $typeColSql = $this->isSqlite() ? 'TEXT' : 'VARCHAR(255)';
+        $idColSql = $this->isSqlite() ? 'INTEGER' : 'BIGINT UNSIGNED';
+
+        $this->addColumn(new ColumnDefinition($name . '_type', $typeColSql));
+        $this->addColumn(new ColumnDefinition($name . '_id', $idColSql));
+        $this->index([$name . '_type', $name . '_id']);
+    }
+
+    /**
+     * Add nullable polymorphic `{name}_type` + `{name}_id` columns with a composite index.
+     *
+     * @param string $name
+     *
+     * @return void
+     */
+    public function nullableMorphs(string $name): void
+    {
+        $typeColSql = $this->isSqlite() ? 'TEXT' : 'VARCHAR(255)';
+        $idColSql = $this->isSqlite() ? 'INTEGER' : 'BIGINT UNSIGNED';
+
+        $this->addColumn(new ColumnDefinition($name . '_type', $typeColSql))->nullable()->default(null);
+        $this->addColumn(new ColumnDefinition($name . '_id', $idColSql))->nullable()->default(null);
+        $this->index([$name . '_type', $name . '_id']);
+    }
+
+    /**
      * Define an ENUM column.
      *
      * MySQL produces a native ENUM type; SQLite produces TEXT with a CHECK constraint.
@@ -260,6 +525,95 @@ final class Blueprint
     }
 
     /**
+     * @param list<string> $columns
+     *
+     * @return void
+     */
+    public function dropColumns(array $columns): void
+    {
+        foreach ($columns as $col) {
+            $this->dropColumn($col);
+        }
+    }
+
+    /**
+     * @param string $name Index name
+     *
+     * @return void
+     */
+    public function dropIndex(string $name): void
+    {
+        $this->droppedIndexes[] = $name;
+    }
+
+    /**
+     * @param string $name Unique index name
+     *
+     * @return void
+     */
+    public function dropUnique(string $name): void
+    {
+        $this->droppedIndexes[] = $name;
+    }
+
+    /**
+     * Drop a named foreign key constraint (MySQL only; silently skipped on SQLite).
+     *
+     * @param string $name Constraint name
+     *
+     * @return void
+     */
+    public function dropForeign(string $name): void
+    {
+        $this->droppedForeignKeys[] = $name;
+    }
+
+    /**
+     * Drop the primary key (MySQL only; silently skipped on SQLite).
+     *
+     * @return void
+     */
+    public function dropPrimary(): void
+    {
+        $this->dropPrimary = true;
+    }
+
+    /**
+     * Drop the `created_at` and `updated_at` timestamp columns.
+     *
+     * @return void
+     */
+    public function dropTimestamps(): void
+    {
+        $this->dropColumn('created_at');
+        $this->dropColumn('updated_at');
+    }
+
+    /**
+     * Drop the `deleted_at` soft-delete column.
+     *
+     * @return void
+     */
+    public function dropSoftDeletes(): void
+    {
+        $this->dropColumn('deleted_at');
+    }
+
+    /**
+     * Drop both morph columns and their composite index.
+     *
+     * @param string $name
+     *
+     * @return void
+     */
+    public function dropMorphs(string $name): void
+    {
+        $this->dropColumn($name . '_type');
+        $this->dropColumn($name . '_id');
+        $this->droppedMorphs[] = $name;
+    }
+
+    /**
      * @param string $from
      * @param string $to
      *
@@ -281,6 +635,24 @@ final class Blueprint
         $this->foreignKeys[] = $fk;
 
         return $fk;
+    }
+
+    /**
+     * Add a BIGINT UNSIGNED NOT NULL column and register a foreign key for it.
+     *
+     * Chain ->constrained() to auto-infer the referenced table/column, or
+     * use ->references()->on() for explicit configuration.
+     *
+     * @param string $column
+     *
+     * @return ForeignKeyDefinition
+     */
+    public function foreignId(string $column): ForeignKeyDefinition
+    {
+        $type = $this->isSqlite() ? 'INTEGER' : 'BIGINT UNSIGNED';
+        $this->addColumn(new ColumnDefinition($column, $type));
+
+        return $this->foreign($column);
     }
 
     /**
@@ -312,9 +684,7 @@ final class Blueprint
         }
 
         foreach ($this->foreignKeys as $fk) {
-            $parts[] = 'FOREIGN KEY (' . $this->quoteIdentifier($fk->getColumn()) . ')'
-                . ' REFERENCES ' . $this->quoteIdentifier($fk->getReferencedTable())
-                . '(' . $this->quoteIdentifier($fk->getReferencedColumn()) . ')';
+            $parts[] = $this->compileForeignKey($table, $fk);
         }
 
         return 'CREATE TABLE ' . $this->quoteIdentifier($table) . ' (' . implode(', ', $parts) . ')';
@@ -360,9 +730,34 @@ final class Blueprint
         if (!$this->isSqlite()) {
             foreach ($this->foreignKeys as $fk) {
                 $statements[] = 'ALTER TABLE ' . $quotedTable
-                    . ' ADD FOREIGN KEY (' . $this->quoteIdentifier($fk->getColumn()) . ')'
-                    . ' REFERENCES ' . $this->quoteIdentifier($fk->getReferencedTable())
-                    . '(' . $this->quoteIdentifier($fk->getReferencedColumn()) . ')';
+                    . ' ADD ' . $this->compileForeignKey($table, $fk);
+            }
+        }
+
+        foreach ($this->droppedIndexes as $name) {
+            if ($this->isSqlite()) {
+                $statements[] = 'DROP INDEX ' . $this->quoteIdentifier($name);
+            } else {
+                $statements[] = 'ALTER TABLE ' . $quotedTable . ' DROP INDEX ' . $this->quoteIdentifier($name);
+            }
+        }
+
+        if (!$this->isSqlite()) {
+            foreach ($this->droppedForeignKeys as $name) {
+                $statements[] = 'ALTER TABLE ' . $quotedTable . ' DROP FOREIGN KEY ' . $this->quoteIdentifier($name);
+            }
+
+            if ($this->dropPrimary) {
+                $statements[] = 'ALTER TABLE ' . $quotedTable . ' DROP PRIMARY KEY';
+            }
+        }
+
+        foreach ($this->droppedMorphs as $morphName) {
+            $indexName = $table . '_' . $morphName . '_type_' . $morphName . '_id_index';
+            if ($this->isSqlite()) {
+                $statements[] = 'DROP INDEX ' . $this->quoteIdentifier($indexName);
+            } else {
+                $statements[] = 'ALTER TABLE ' . $quotedTable . ' DROP INDEX ' . $this->quoteIdentifier($indexName);
             }
         }
 
@@ -464,6 +859,34 @@ final class Blueprint
     }
 
     /**
+     * @param string              $table
+     * @param ForeignKeyDefinition $fk
+     *
+     * @return string
+     */
+    private function compileForeignKey(string $table, ForeignKeyDefinition $fk): string
+    {
+        $constraintName = $this->quoteIdentifier(
+            'fk_' . $table . '_' . $fk->getColumn()
+        );
+
+        $sql = 'CONSTRAINT ' . $constraintName
+            . ' FOREIGN KEY (' . $this->quoteIdentifier($fk->getColumn()) . ')'
+            . ' REFERENCES ' . $this->quoteIdentifier($fk->getReferencedTable())
+            . '(' . $this->quoteIdentifier($fk->getReferencedColumn()) . ')';
+
+        if ($fk->getOnDelete() !== null) {
+            $sql .= ' ON DELETE ' . $fk->getOnDelete();
+        }
+
+        if ($fk->getOnUpdate() !== null) {
+            $sql .= ' ON UPDATE ' . $fk->getOnUpdate();
+        }
+
+        return $sql;
+    }
+
+    /**
      * @param ColumnDefinition $col
      *
      * @return string
@@ -490,6 +913,10 @@ final class Blueprint
             $def .= ' CHECK (' . $col->getCheck() . ')';
         }
 
+        if ($col->hasOnUpdateCurrent()) {
+            $def .= ' ON UPDATE CURRENT_TIMESTAMP';
+        }
+
         return $def;
     }
 
@@ -500,6 +927,10 @@ final class Blueprint
      */
     private function compileDefault(mixed $value): string
     {
+        if ($value instanceof Expression) {
+            return ' DEFAULT ' . $value->getValue();
+        }
+
         if (is_null($value)) {
             return ' DEFAULT NULL';
         }

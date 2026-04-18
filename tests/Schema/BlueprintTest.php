@@ -6,6 +6,7 @@ namespace Tests\Schema;
 
 use EzPhp\Orm\Schema\Blueprint;
 use EzPhp\Orm\Schema\ColumnDefinition;
+use EzPhp\Orm\Schema\Expression;
 use EzPhp\Orm\Schema\ForeignKeyDefinition;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -19,6 +20,7 @@ use Tests\TestCase;
  */
 #[CoversClass(Blueprint::class)]
 #[UsesClass(ColumnDefinition::class)]
+#[UsesClass(Expression::class)]
 #[UsesClass(ForeignKeyDefinition::class)]
 final class BlueprintTest extends TestCase
 {
@@ -401,6 +403,7 @@ final class BlueprintTest extends TestCase
 
         $sql = $bp->toCreateSql('posts');
 
+        $this->assertStringContainsString('CONSTRAINT `fk_posts_user_id`', $sql);
         $this->assertStringContainsString('FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)', $sql);
     }
 
@@ -412,7 +415,8 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('posts');
 
         $this->assertCount(1, $stmts);
-        $this->assertStringContainsString('ADD FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)', $stmts[0]);
+        $this->assertStringContainsString('ADD CONSTRAINT `fk_posts_user_id`', $stmts[0]);
+        $this->assertStringContainsString('FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)', $stmts[0]);
     }
 
     public function test_foreign_key_skipped_in_sqlite_alter(): void
@@ -423,6 +427,148 @@ final class BlueprintTest extends TestCase
         $stmts = $bp->toAlterSql('posts');
 
         $this->assertCount(0, $stmts);
+    }
+
+    public function test_foreign_key_on_delete_cascade_in_create(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->unsignedInteger('user_id');
+        $bp->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+
+        $sql = $bp->toCreateSql('posts');
+
+        $this->assertStringContainsString('ON DELETE CASCADE', $sql);
+        $this->assertStringNotContainsString('ON UPDATE', $sql);
+    }
+
+    public function test_foreign_key_on_update_restrict_in_create(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->unsignedInteger('user_id');
+        $bp->foreign('user_id')->references('id')->on('users')->onUpdate('restrict');
+
+        $sql = $bp->toCreateSql('posts');
+
+        $this->assertStringNotContainsString('ON DELETE', $sql);
+        $this->assertStringContainsString('ON UPDATE RESTRICT', $sql);
+    }
+
+    public function test_foreign_key_on_delete_and_on_update_in_create(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->unsignedInteger('user_id');
+        $bp->foreign('user_id')->references('id')->on('users')->onDelete('cascade')->onUpdate('restrict');
+
+        $sql = $bp->toCreateSql('posts');
+
+        $this->assertStringContainsString('ON DELETE CASCADE', $sql);
+        $this->assertStringContainsString('ON UPDATE RESTRICT', $sql);
+    }
+
+    public function test_foreign_key_set_null_action(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->unsignedInteger('user_id');
+        $bp->foreign('user_id')->references('id')->on('users')->onDelete('set null');
+
+        $sql = $bp->toCreateSql('posts');
+
+        $this->assertStringContainsString('ON DELETE SET NULL', $sql);
+    }
+
+    public function test_foreign_key_no_action(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->unsignedInteger('user_id');
+        $bp->foreign('user_id')->references('id')->on('users')->onDelete('no action');
+
+        $sql = $bp->toCreateSql('posts');
+
+        $this->assertStringContainsString('ON DELETE NO ACTION', $sql);
+    }
+
+    public function test_foreign_key_on_delete_in_alter(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->foreign('user_id')->references('id')->on('users')->onDelete('cascade')->onUpdate('restrict');
+
+        $stmts = $bp->toAlterSql('posts');
+
+        $this->assertCount(1, $stmts);
+        $this->assertStringContainsString('ON DELETE CASCADE', $stmts[0]);
+        $this->assertStringContainsString('ON UPDATE RESTRICT', $stmts[0]);
+    }
+
+    public function test_foreign_key_invalid_action_throws(): void
+    {
+        $fk = new ForeignKeyDefinition('user_id');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("Invalid FK action 'invalid'");
+
+        $fk->onDelete('invalid');
+    }
+
+    public function test_foreign_key_invalid_on_update_throws(): void
+    {
+        $fk = new ForeignKeyDefinition('user_id');
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $fk->onUpdate('delete');
+    }
+
+    public function test_foreign_id_adds_bigint_column_and_fk(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->foreignId('user_id')->constrained();
+
+        $sql = $bp->toCreateSql('posts');
+
+        $this->assertStringContainsString('`user_id` BIGINT UNSIGNED NOT NULL', $sql);
+        $this->assertStringContainsString('CONSTRAINT `fk_posts_user_id`', $sql);
+        $this->assertStringContainsString('FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)', $sql);
+    }
+
+    public function test_foreign_id_constrained_explicit_table(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->foreignId('post_id')->constrained('articles');
+
+        $sql = $bp->toCreateSql('comments');
+
+        $this->assertStringContainsString('FOREIGN KEY (`post_id`) REFERENCES `articles`(`id`)', $sql);
+    }
+
+    public function test_foreign_id_constrained_with_on_delete(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->foreignId('user_id')->constrained()->onDelete('cascade');
+
+        $sql = $bp->toCreateSql('posts');
+
+        $this->assertStringContainsString('FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)', $sql);
+        $this->assertStringContainsString('ON DELETE CASCADE', $sql);
+    }
+
+    public function test_foreign_id_sqlite_uses_integer_type(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->foreignId('user_id')->constrained();
+
+        $sql = $bp->toCreateSql('posts');
+
+        $this->assertStringContainsString('`user_id` INTEGER NOT NULL', $sql);
+        $this->assertStringContainsString('FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)', $sql);
+    }
+
+    public function test_foreign_id_constrained_infers_table_from_column(): void
+    {
+        $fk = new ForeignKeyDefinition('category_id');
+        $fk->constrained();
+
+        $this->assertSame('id', $fk->getReferencedColumn());
+        $this->assertSame('categorys', $fk->getReferencedTable());
     }
 
     public function test_index_with_auto_name(): void
@@ -627,5 +773,447 @@ final class BlueprintTest extends TestCase
         $bp->id();
         $bp->index('email', 'bad name!');
         $bp->toIndexSql('users');
+    }
+
+    // =========================================================================
+    // Step 5 — Missing column type shortcuts
+    // =========================================================================
+
+    public function test_uuid_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->uuid('id');
+        $this->assertStringContainsString('`id` CHAR(36) NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_uuid_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->uuid('id');
+        $this->assertStringContainsString('`id` TEXT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_ulid_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->ulid('id');
+        $this->assertStringContainsString('`id` CHAR(26) NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_tiny_integer_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->tinyInteger('score');
+        $this->assertStringContainsString('`score` TINYINT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_tiny_integer_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->tinyInteger('score');
+        $this->assertStringContainsString('`score` INTEGER NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_small_integer_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->smallInteger('score');
+        $this->assertStringContainsString('`score` SMALLINT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_medium_integer_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->mediumInteger('score');
+        $this->assertStringContainsString('`score` MEDIUMINT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_unsigned_big_integer_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->unsignedBigInteger('views');
+        $this->assertStringContainsString('`views` BIGINT UNSIGNED NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_unsigned_big_integer_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->unsignedBigInteger('views');
+        $this->assertStringContainsString('`views` INTEGER NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_unsigned_tiny_integer_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->unsignedTinyInteger('age');
+        $this->assertStringContainsString('`age` TINYINT UNSIGNED NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_long_text_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->longText('body');
+        $this->assertStringContainsString('`body` LONGTEXT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_medium_text_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->mediumText('body');
+        $this->assertStringContainsString('`body` MEDIUMTEXT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_tiny_text_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->tinyText('body');
+        $this->assertStringContainsString('`body` TINYTEXT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_long_text_sqlite_falls_back_to_text(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->longText('body');
+        $this->assertStringContainsString('`body` TEXT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_binary_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->binary('payload');
+        $this->assertStringContainsString('`payload` BLOB NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_ip_address_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->ipAddress('ip');
+        $this->assertStringContainsString('`ip` VARCHAR(45) NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_ip_address_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->ipAddress('ip');
+        $this->assertStringContainsString('`ip` TEXT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_mac_address_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->macAddress('mac');
+        $this->assertStringContainsString('`mac` VARCHAR(17) NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_year_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->year('born');
+        $this->assertStringContainsString('`born` YEAR NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_time_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->time('starts_at');
+        $this->assertStringContainsString('`starts_at` TIME NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_date_time_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->dateTime('published_at');
+        $this->assertStringContainsString('`published_at` DATETIME NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_date_time_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->dateTime('published_at');
+        $this->assertStringContainsString('`published_at` TEXT NOT NULL', $bp->toCreateSql('t'));
+    }
+
+    public function test_soft_deletes_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->softDeletes();
+        $sql = $bp->toCreateSql('t');
+        $this->assertStringContainsString('`deleted_at` TIMESTAMP NULL DEFAULT NULL', $sql);
+    }
+
+    public function test_soft_deletes_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->softDeletes();
+        $sql = $bp->toCreateSql('t');
+        $this->assertStringContainsString('`deleted_at` TEXT NULL DEFAULT NULL', $sql);
+    }
+
+    public function test_remember_token_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->rememberToken();
+        $sql = $bp->toCreateSql('t');
+        $this->assertStringContainsString('`remember_token` VARCHAR(100) NULL DEFAULT NULL', $sql);
+    }
+
+    public function test_remember_token_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->rememberToken();
+        $sql = $bp->toCreateSql('t');
+        $this->assertStringContainsString('`remember_token` TEXT NULL DEFAULT NULL', $sql);
+    }
+
+    public function test_morphs_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->morphs('taggable');
+        $sql = $bp->toCreateSql('tags');
+        $this->assertStringContainsString('`taggable_type` VARCHAR(255) NOT NULL', $sql);
+        $this->assertStringContainsString('`taggable_id` BIGINT UNSIGNED NOT NULL', $sql);
+
+        $idxSql = $bp->toIndexSql('tags');
+        $this->assertCount(1, $idxSql);
+        $this->assertStringContainsString('`taggable_type`', $idxSql[0]);
+        $this->assertStringContainsString('`taggable_id`', $idxSql[0]);
+    }
+
+    public function test_morphs_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->morphs('taggable');
+        $sql = $bp->toCreateSql('tags');
+        $this->assertStringContainsString('`taggable_type` TEXT NOT NULL', $sql);
+        $this->assertStringContainsString('`taggable_id` INTEGER NOT NULL', $sql);
+    }
+
+    public function test_nullable_morphs_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->nullableMorphs('imageable');
+        $sql = $bp->toCreateSql('images');
+        $this->assertStringContainsString('`imageable_type` VARCHAR(255) NULL DEFAULT NULL', $sql);
+        $this->assertStringContainsString('`imageable_id` BIGINT UNSIGNED NULL DEFAULT NULL', $sql);
+
+        $idxSql = $bp->toIndexSql('images');
+        $this->assertCount(1, $idxSql);
+    }
+
+    // =========================================================================
+    // Step 6 — Expression-based default values
+    // =========================================================================
+
+    public function test_expression_raw_emitted_verbatim_in_default(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->timestamp('created_at')->default(Expression::raw('CURRENT_TIMESTAMP'));
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString('DEFAULT CURRENT_TIMESTAMP', $sql);
+        $this->assertStringNotContainsString("DEFAULT 'CURRENT_TIMESTAMP'", $sql);
+    }
+
+    public function test_expression_raw_with_parentheses(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->uuid('id')->default(Expression::raw('(UUID())'));
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString('DEFAULT (UUID())', $sql);
+    }
+
+    public function test_use_current_shorthand(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->timestamp('created_at')->useCurrent();
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString('DEFAULT CURRENT_TIMESTAMP', $sql);
+    }
+
+    public function test_use_current_on_update(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString('DEFAULT CURRENT_TIMESTAMP', $sql);
+        $this->assertStringContainsString('ON UPDATE CURRENT_TIMESTAMP', $sql);
+    }
+
+    public function test_use_current_on_update_without_default(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->timestamp('updated_at')->useCurrentOnUpdate();
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString('ON UPDATE CURRENT_TIMESTAMP', $sql);
+        $this->assertStringNotContainsString('DEFAULT', $sql);
+    }
+
+    public function test_expression_get_value(): void
+    {
+        $expr = Expression::raw('CURRENT_TIMESTAMP');
+
+        $this->assertSame('CURRENT_TIMESTAMP', $expr->getValue());
+    }
+
+    public function test_expression_is_not_quoted_unlike_string(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->string('a')->default('hello');
+        $bp->string('b')->default(Expression::raw('CURRENT_TIMESTAMP'));
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString("DEFAULT 'hello'", $sql);
+        $this->assertStringContainsString('DEFAULT CURRENT_TIMESTAMP', $sql);
+        $this->assertStringNotContainsString("DEFAULT 'CURRENT_TIMESTAMP'", $sql);
+    }
+
+    // =========================================================================
+    // Step 7 — Drop helpers
+    // =========================================================================
+
+    public function test_drop_columns_bulk(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropColumns(['first_name', 'last_name']);
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(2, $stmts);
+        $this->assertSame('ALTER TABLE `users` DROP COLUMN `first_name`', $stmts[0]);
+        $this->assertSame('ALTER TABLE `users` DROP COLUMN `last_name`', $stmts[1]);
+    }
+
+    public function test_drop_index_mysql(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropIndex('idx_users_email');
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame('ALTER TABLE `users` DROP INDEX `idx_users_email`', $stmts[0]);
+    }
+
+    public function test_drop_index_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite', 'alter');
+        $bp->dropIndex('idx_users_email');
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame('DROP INDEX `idx_users_email`', $stmts[0]);
+    }
+
+    public function test_drop_unique_mysql(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropUnique('uniq_users_email');
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame('ALTER TABLE `users` DROP INDEX `uniq_users_email`', $stmts[0]);
+    }
+
+    public function test_drop_foreign_mysql(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropForeign('fk_posts_user_id');
+
+        $stmts = $bp->toAlterSql('posts');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame('ALTER TABLE `posts` DROP FOREIGN KEY `fk_posts_user_id`', $stmts[0]);
+    }
+
+    public function test_drop_foreign_skipped_on_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite', 'alter');
+        $bp->dropForeign('fk_posts_user_id');
+
+        $stmts = $bp->toAlterSql('posts');
+
+        $this->assertCount(0, $stmts);
+    }
+
+    public function test_drop_primary_mysql(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropPrimary();
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame('ALTER TABLE `users` DROP PRIMARY KEY', $stmts[0]);
+    }
+
+    public function test_drop_primary_skipped_on_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite', 'alter');
+        $bp->dropPrimary();
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(0, $stmts);
+    }
+
+    public function test_drop_timestamps(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropTimestamps();
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(2, $stmts);
+        $this->assertSame('ALTER TABLE `users` DROP COLUMN `created_at`', $stmts[0]);
+        $this->assertSame('ALTER TABLE `users` DROP COLUMN `updated_at`', $stmts[1]);
+    }
+
+    public function test_drop_soft_deletes(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropSoftDeletes();
+
+        $stmts = $bp->toAlterSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame('ALTER TABLE `users` DROP COLUMN `deleted_at`', $stmts[0]);
+    }
+
+    public function test_drop_morphs_mysql(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropMorphs('taggable');
+
+        $stmts = $bp->toAlterSql('tags');
+
+        $this->assertCount(3, $stmts);
+        $this->assertSame('ALTER TABLE `tags` DROP COLUMN `taggable_type`', $stmts[0]);
+        $this->assertSame('ALTER TABLE `tags` DROP COLUMN `taggable_id`', $stmts[1]);
+        $this->assertSame('ALTER TABLE `tags` DROP INDEX `tags_taggable_type_taggable_id_index`', $stmts[2]);
+    }
+
+    public function test_drop_morphs_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite', 'alter');
+        $bp->dropMorphs('taggable');
+
+        $stmts = $bp->toAlterSql('tags');
+
+        $this->assertCount(3, $stmts);
+        $this->assertSame('ALTER TABLE `tags` DROP COLUMN `taggable_type`', $stmts[0]);
+        $this->assertSame('ALTER TABLE `tags` DROP COLUMN `taggable_id`', $stmts[1]);
+        $this->assertSame('DROP INDEX `tags_taggable_type_taggable_id_index`', $stmts[2]);
     }
 }

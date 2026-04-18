@@ -27,6 +27,8 @@ final class ColumnDefinition
 
     private bool $isChanged = false;
 
+    private bool $onUpdateCurrent = false;
+
     /**
      * ColumnDefinition Constructor
      *
@@ -127,6 +129,28 @@ final class ColumnDefinition
     }
 
     /**
+     * Set DEFAULT CURRENT_TIMESTAMP — shorthand for ->default(Expression::raw('CURRENT_TIMESTAMP')).
+     *
+     * @return self
+     */
+    public function useCurrent(): self
+    {
+        return $this->default(Expression::raw('CURRENT_TIMESTAMP'));
+    }
+
+    /**
+     * Append ON UPDATE CURRENT_TIMESTAMP to the column definition.
+     *
+     * @return self
+     */
+    public function useCurrentOnUpdate(): self
+    {
+        $this->onUpdateCurrent = true;
+
+        return $this;
+    }
+
+    /**
      * @return bool
      */
     public function isNullable(): bool
@@ -196,5 +220,13 @@ final class ColumnDefinition
     public function isChanged(): bool
     {
         return $this->isChanged;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasOnUpdateCurrent(): bool
+    {
+        return $this->onUpdateCurrent;
     }
 }

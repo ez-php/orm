@@ -183,10 +183,11 @@ src/
 │   ├── EntityBelongsTo.php           — Inverse of HasMany/HasOne: FK on owning entity
 │   └── EntityBelongsToMany.php       — Many-to-many via pivot table; raw SQL join
 └── Schema/
-    ├── Schema.php                    — DDL façade: create/table/drop/dropIfExists/hasTable
-    ├── Blueprint.php                 — Column and constraint definitions; generates CREATE/ALTER/INDEX SQL
-    ├── ColumnDefinition.php          — Fluent column spec: nullable/default/unique
-    ├── ForeignKeyDefinition.php      — FK constraint: references(table).on(column)
+    ├── Schema.php                    — DDL façade: create/table/drop/dropIfExists/hasTable/hasColumn/rename/dump; SQLite version guard for RENAME COLUMN
+    ├── Blueprint.php                 — Column and constraint definitions; generates CREATE/ALTER/INDEX/DROP SQL; driver-aware type mapping
+    ├── ColumnDefinition.php          — Fluent column spec: nullable/default/unique/useCurrent/useCurrentOnUpdate/after/first/change
+    ├── Expression.php                — Raw SQL fragment for DEFAULT clauses (e.g. CURRENT_TIMESTAMP); emitted verbatim, not quoted
+    ├── ForeignKeyDefinition.php      — FK constraint: references/on/onDelete/onUpdate/constrained; validated cascade actions
     └── SchemaServiceProvider.php     — Binds Schema lazily to the container
 
 tests/
@@ -407,24 +408,89 @@ All relations extend `EntityRelation` and implement:
 
 ### Schema / Blueprint (`src/Schema/`)
 
-**Schema** — DDL façade. Detects driver (`sqlite` vs MySQL) from `PDO::ATTR_DRIVER_NAME`. `hasTable()` uses `sqlite_master` for SQLite and `INFORMATION_SCHEMA` for MySQL.
+**Schema** — DDL façade. Detects driver (`sqlite` vs MySQL) from `PDO::ATTR_DRIVER_NAME`.
+
+| Method | Notes |
+|---|---|
+| `create(table, callback)` | Runs CREATE TABLE + any index statements |
+| `table(table, callback)` | Runs ALTER TABLE statements; guards against RENAME COLUMN on SQLite < 3.25 |
+| `drop(table)` / `dropIfExists(table)` | DROP TABLE |
+| `hasTable(table)` | `sqlite_master` (SQLite) or `INFORMATION_SCHEMA` (MySQL) |
+| `hasColumn(table, col)` | `PRAGMA table_info` (SQLite) or `INFORMATION_SCHEMA.COLUMNS` (MySQL) |
+| `rename(from, to)` | `ALTER TABLE … RENAME TO` (SQLite) / `RENAME TABLE` (MySQL) |
+| `dump(path)` | Writes all CREATE TABLE + CREATE INDEX statements to a SQL file |
 
 **Blueprint** — operates in `'create'` or `'alter'` mode. Column methods route to `$columns` (create) or `$addedColumns` (alter).
 
-**SQLite type mapping** (Blueprint normalises types per driver):
+**Column type methods** (Blueprint normalises types per driver; SQLite fallbacks in parentheses):
 
-| Blueprint method | MySQL | SQLite |
+| Method | MySQL | SQLite |
 |---|---|---|
 | `id()` | `INT UNSIGNED AUTO_INCREMENT` | `INTEGER` (PK) |
 | `string(col, n)` | `VARCHAR(n)` | `TEXT` |
-| `boolean(col)` | `TINYINT(1)` | `INTEGER` |
-| `timestamp(col)` | `TIMESTAMP` | `TEXT` |
-| `date(col)` | `DATE` | `TEXT` |
-| `json(col)` | `JSON` | `TEXT` |
+| `text(col)` / `longText` / `mediumText` / `tinyText` | `TEXT` / `LONGTEXT` / `MEDIUMTEXT` / `TINYTEXT` | `TEXT` |
+| `integer(col)` | `INTEGER` | `INTEGER` |
+| `tinyInteger` / `smallInteger` / `mediumInteger` | `TINYINT` / `SMALLINT` / `MEDIUMINT` | `INTEGER` |
 | `bigInteger(col)` | `BIGINT` | `INTEGER` |
-| `decimal(p, s)` | `DECIMAL(p,s)` | `NUMERIC(p,s)` |
+| `unsignedInteger(col)` / `unsignedBigInteger` / `unsignedTinyInteger` | `INT UNSIGNED` / `BIGINT UNSIGNED` / `TINYINT UNSIGNED` | `INTEGER` |
+| `float(col)` | `FLOAT` | `FLOAT` |
+| `decimal(col, p, s)` | `DECIMAL(p,s)` | `NUMERIC(p,s)` |
+| `boolean(col)` | `TINYINT(1)` | `INTEGER` |
+| `uuid(col)` / `ulid(col)` | `CHAR(36)` / `CHAR(26)` | `TEXT` |
+| `date(col)` / `time(col)` / `dateTime(col)` / `year(col)` | `DATE` / `TIME` / `DATETIME` / `YEAR` | `TEXT` |
+| `timestamp(col)` | `TIMESTAMP` | `TEXT` |
+| `json(col)` | `JSON` | `TEXT` |
+| `binary(col)` | `BLOB` | `BLOB` |
+| `ipAddress(col)` / `macAddress(col)` | `VARCHAR(45)` / `VARCHAR(17)` | `TEXT` |
+| `enum(col, values)` | `ENUM(...)` | `TEXT` + `CHECK` constraint |
 
-**ALTER TABLE** — SQLite does not support `ADD FOREIGN KEY`, so FK constraints are skipped in alter mode for SQLite.
+**Convenience column methods:**
+
+| Method | Adds |
+|---|---|
+| `timestamps()` | `created_at` + `updated_at` TIMESTAMP NULL |
+| `softDeletes()` | `deleted_at` TIMESTAMP NULL |
+| `rememberToken()` | `remember_token` VARCHAR(100) NULL |
+| `morphs(name)` | `{name}_type` VARCHAR(255) + `{name}_id` BIGINT UNSIGNED + composite index |
+| `nullableMorphs(name)` | same as morphs but both columns nullable |
+| `foreignId(col)` | BIGINT UNSIGNED column + registers FK; returns `ForeignKeyDefinition` for chaining |
+
+**Foreign key fluent API:**
+
+```php
+$table->foreign('user_id')->references('id')->on('users')->onDelete('cascade')->onUpdate('restrict');
+$table->foreignId('user_id')->constrained();                    // infers references('id')->on('users')
+$table->foreignId('post_id')->constrained('articles');          // explicit table override
+```
+
+Cascade actions: `cascade`, `restrict`, `set null`, `no action`. FK constraints are named `fk_{table}_{col}` and emit `CONSTRAINT … FOREIGN KEY … ON DELETE … ON UPDATE …`.
+
+**Expression-based defaults:**
+
+```php
+$table->timestamp('created_at')->default(Expression::raw('CURRENT_TIMESTAMP'));
+$table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
+```
+
+`Expression::raw(string)` emits the value verbatim in `DEFAULT` clauses instead of quoting it as a string literal.
+
+**Column modifiers:** `->nullable()`, `->default(value)`, `->unique()`, `->after(col)`, `->first()`, `->change()` (marks for MODIFY COLUMN in MySQL ALTER), `->useCurrent()`, `->useCurrentOnUpdate()`.
+
+**ALTER TABLE operations:**
+
+| Method | MySQL | SQLite |
+|---|---|---|
+| `addColumn` / `addedColumns` | `ADD COLUMN` | `ADD COLUMN` |
+| `dropColumn(col)` / `dropColumns([…])` | `DROP COLUMN` | `DROP COLUMN` |
+| `renameColumn(from, to)` | `RENAME COLUMN` | `RENAME COLUMN` (requires 3.25+) |
+| `change()` on column | `MODIFY COLUMN` | skipped silently |
+| `dropIndex(name)` / `dropUnique(name)` | `DROP INDEX` | standalone `DROP INDEX` |
+| `dropForeign(name)` | `DROP FOREIGN KEY` | skipped |
+| `dropPrimary()` | `DROP PRIMARY KEY` | skipped |
+| `dropTimestamps()` | drops `created_at` + `updated_at` | drops `created_at` + `updated_at` |
+| `dropSoftDeletes()` | drops `deleted_at` | drops `deleted_at` |
+| `dropMorphs(name)` | drops both columns + index | drops both columns + `DROP INDEX` |
+| `foreign(col)` / `foreignId(col)` | `ADD CONSTRAINT … FOREIGN KEY` | skipped |
 
 **Indexes** — generated as separate `CREATE INDEX` statements (not inline in `CREATE TABLE`).
 
@@ -443,6 +509,9 @@ All relations extend `EntityRelation` and implement:
 - **`CastableInterface` for domain value objects** — Custom value objects (e.g. `Money`, `EmailAddress`) implement `castFrom`/`castTo` and are registered in `$casts`. This keeps domain types in the entity without framework coupling.
 - **`QueryBuilder::cache()` integration** — Pass a `CacheInterface` instance and TTL; the next `get()` will read from cache on hit or execute the query and store the result on miss. Cache is keyed by the compiled SQL + bindings.
 - **Blueprint is driver-aware** — The same migration code runs on both SQLite (tests) and MySQL (production). Type normalisation is handled centrally in `Blueprint`.
+- **`Expression` for raw SQL defaults** — `ColumnDefinition::default()` accepts any value; when the value is an `Expression` instance, `Blueprint::compileDefault()` emits the raw string verbatim instead of quoting it. This enables `DEFAULT CURRENT_TIMESTAMP`, `DEFAULT (UUID())`, etc. without breaking the type-safe default path for literals.
+- **SQLite 3.25+ required for `RENAME COLUMN`** — `Schema::table()` inspects pending ALTER statements and throws a descriptive `RuntimeException` if the running SQLite version is below 3.25.0. The table-recreation fallback is not implemented because PHP 8.5 targets platforms where 3.25+ is always available.
+- **`Schema::dump()` is SQLite/MySQL only** — The dump logic uses `sqlite_master` or `SHOW CREATE TABLE`. Other drivers are not supported.
 - **`QueryBuilder` uses clone-based withers** — Every clause method clones the builder so intermediate states can be reused without side effects.
 
 ---

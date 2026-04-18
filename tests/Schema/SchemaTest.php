@@ -548,4 +548,145 @@ final class SchemaTest extends TestCase
         $this->expectException(PDOException::class);
         $this->db->query("INSERT INTO things (status) VALUES ('deleted')");
     }
+
+    // =========================================================================
+    // Step 11 — renameColumn() driver correctness
+    // =========================================================================
+
+    /**
+     * SQLite 3.25+ is required for RENAME COLUMN. This test documents the
+     * minimum version and ensures the running SQLite meets it.
+     *
+     * @return void
+     */
+    public function test_sqlite_version_supports_rename_column(): void
+    {
+        $version = $this->db->getPdo()->getAttribute(\PDO::ATTR_SERVER_VERSION);
+        $this->assertIsString($version);
+        $this->assertTrue(
+            version_compare($version, '3.25.0', '>='),
+            "SQLite $version is too old for RENAME COLUMN (requires 3.25+)."
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_rename_table(): void
+    {
+        $this->schema->create('old_name', function (Blueprint $t): void {
+            $t->id();
+        });
+
+        $this->schema->rename('old_name', 'new_name');
+
+        $this->assertTrue($this->schema->hasTable('new_name'));
+        $this->assertFalse($this->schema->hasTable('old_name'));
+    }
+
+    // =========================================================================
+    // Step 12 — Schema dump
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_dump_creates_file_with_create_table(): void
+    {
+        $this->schema->create('articles', function (Blueprint $t): void {
+            $t->id();
+            $t->string('title');
+        });
+
+        $path = sys_get_temp_dir() . '/schema_dump_' . uniqid() . '.sql';
+
+        try {
+            $this->schema->dump($path);
+
+            $this->assertFileExists($path);
+            $content = (string) file_get_contents($path);
+
+            $this->assertStringContainsString('CREATE TABLE', $content);
+            $this->assertStringContainsString('articles', $content);
+        } finally {
+            if (file_exists($path)) {
+                unlink($path);
+            }
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public function test_dump_includes_indexes(): void
+    {
+        $this->schema->create('users', function (Blueprint $t): void {
+            $t->id();
+            $t->string('email');
+            $t->index('email', 'users_email_index');
+        });
+
+        $path = sys_get_temp_dir() . '/schema_dump_' . uniqid() . '.sql';
+
+        try {
+            $this->schema->dump($path);
+            $content = (string) file_get_contents($path);
+
+            $this->assertStringContainsString('CREATE INDEX', $content);
+            $this->assertStringContainsString('users_email_index', $content);
+        } finally {
+            if (file_exists($path)) {
+                unlink($path);
+            }
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public function test_dump_multiple_tables_all_present(): void
+    {
+        $this->schema->create('users', function (Blueprint $t): void {
+            $t->id();
+            $t->string('name');
+        });
+
+        $this->schema->create('posts', function (Blueprint $t): void {
+            $t->id();
+            $t->string('title');
+        });
+
+        $path = sys_get_temp_dir() . '/schema_dump_' . uniqid() . '.sql';
+
+        try {
+            $this->schema->dump($path);
+            $content = (string) file_get_contents($path);
+
+            $this->assertStringContainsString('users', $content);
+            $this->assertStringContainsString('posts', $content);
+        } finally {
+            if (file_exists($path)) {
+                unlink($path);
+            }
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public function test_dump_file_has_header_comment(): void
+    {
+        $path = sys_get_temp_dir() . '/schema_dump_' . uniqid() . '.sql';
+
+        try {
+            $this->schema->dump($path);
+            $content = (string) file_get_contents($path);
+
+            $this->assertStringStartsWith('-- Schema dump generated at', $content);
+        } finally {
+            if (file_exists($path)) {
+                unlink($path);
+            }
+        }
+    }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace EzPhp\Orm\Schema;
 
 use EzPhp\Contracts\DatabaseInterface;
+use EzPhp\Contracts\Schema\SchemaInterface;
 use EzPhp\Contracts\ServiceProvider;
 
 /**
@@ -20,5 +21,6 @@ final class SchemaServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(Schema::class, fn () => new Schema($this->app->make(DatabaseInterface::class)));
+        $this->app->bind(SchemaInterface::class, fn () => $this->app->make(Schema::class));
     }
 }

@@ -170,6 +170,8 @@ src/
 ├── EntityServiceProvider.php         — Calls Entity::setDatabase($db) in boot()
 ├── Hydrator.php                      — Converts raw DB rows → Entity instances and Entity attributes → storage arrays
 ├── CastableInterface.php             — Interface for custom value-object casts: castFrom(mixed)/castTo(): mixed
+├── EntityObserverInterface.php       — Lifecycle observer contract: creating/created/updating/updated/deleting/deleted hooks
+├── ObservableRepositoryTrait.php     — Mixin for AbstractRepository subclasses; registers observers and fires lifecycle hooks around save/delete
 ├── DuplicateKeyException.php         — Thrown by save() on duplicate-key violations (detects via PDOException code)
 ├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem/isFirstPage/isLastPage/from/to
 ├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache

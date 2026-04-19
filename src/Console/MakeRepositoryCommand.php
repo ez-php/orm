@@ -113,7 +113,7 @@ final readonly class MakeRepositoryCommand implements CommandInterface
             /**
              * @extends AbstractRepository<$entityName>
              */
-            final class $repoName extends AbstractRepository
+            class $repoName extends AbstractRepository
             {
                 protected function entityClass(): string
                 {

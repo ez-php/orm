@@ -7,6 +7,7 @@ namespace EzPhp\Orm;
 use EzPhp\Contracts\DatabaseInterface;
 use EzPhp\Contracts\EzPhpException;
 use ReflectionClass;
+use ReflectionException;
 
 /**
  * Class Entity
@@ -125,6 +126,36 @@ abstract class Entity
     public function __construct(array $attributes = [])
     {
         $this->fill($attributes);
+    }
+
+    // ─── Factory ─────────────────────────────────────────────────────────────
+
+    /**
+     * Create an entity instance with all given attributes set unconditionally,
+     * bypassing fillable / guarded guards — mirrors what Hydrator::hydrate() does internally.
+     *
+     * The constructor is intentionally skipped so that subclasses with non-standard
+     * constructor signatures remain compatible. Default property values (empty arrays
+     * for $attributes and $relations) are still initialised by PHP.
+     *
+     * Use this in tests to construct entities with known IDs or protected attributes
+     * without calling setAttribute() for each column individually.
+     *
+     * @param array<string, mixed> $attributes
+     *
+     * @return static
+     * @throws ReflectionException
+     */
+    public static function fromRaw(array $attributes): static
+    {
+        /** @var static $entity */
+        $entity = (new ReflectionClass(static::class))->newInstanceWithoutConstructor();
+
+        foreach ($attributes as $key => $value) {
+            $entity->setAttribute($key, $value);
+        }
+
+        return $entity;
     }
 
     // ─── Attribute access ────────────────────────────────────────────────────

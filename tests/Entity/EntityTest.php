@@ -356,6 +356,42 @@ final class EntityTest extends TestCase
         self::assertSame(['name', 'email'], $entity::getFillable());
     }
 
+    // ─── fromRaw ─────────────────────────────────────────────────────────────
+
+    public function testFromRawSetsAllAttributesRegardlessOfFillable(): void
+    {
+        $entity = BasicTestEntity::fromRaw(['id' => 42, 'name' => 'Bolt', 'secret' => 'x']);
+
+        self::assertSame(42, $entity->getAttribute('id'));
+        self::assertSame('Bolt', $entity->getAttribute('name'));
+        self::assertSame('x', $entity->getAttribute('secret'));
+    }
+
+    public function testFromRawReturnsCorrectSubtype(): void
+    {
+        $entity = BasicTestEntity::fromRaw(['id' => 1]);
+
+        self::assertInstanceOf(BasicTestEntity::class, $entity);
+    }
+
+    public function testFromRawDoesNotUseFillableGuard(): void
+    {
+        $entity = new class (['id' => 99]) extends Entity {
+            protected static array $fillable = ['name'];
+        };
+
+        // Constructor respects $fillable — id is blocked
+        self::assertNull($entity->getAttribute('id'));
+
+        // fromRaw bypasses the guard
+        $fromRaw = (new class () extends Entity {
+            protected static array $fillable = ['name'];
+        })::fromRaw(['id' => 99, 'name' => 'Alice']);
+
+        self::assertSame(99, $fromRaw->getAttribute('id'));
+        self::assertSame('Alice', $fromRaw->getAttribute('name'));
+    }
+
     // ─── tearDown ─────────────────────────────────────────────────────────────
 
     protected function tearDown(): void

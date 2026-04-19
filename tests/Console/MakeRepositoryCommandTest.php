@@ -146,6 +146,20 @@ final class MakeRepositoryCommandTest extends TestCase
         self::assertSame(1, $code);
     }
 
+    public function testGeneratedClassIsNotFinal(): void
+    {
+        $command = new MakeRepositoryCommand($this->srcPath);
+
+        ob_start();
+        $command->handle(['Widget']);
+        ob_get_clean();
+
+        $content = file_get_contents($this->srcPath . '/Repositories/WidgetRepository.php');
+        self::assertIsString($content);
+        self::assertStringNotContainsString('final class', $content);
+        self::assertStringContainsString('class WidgetRepository', $content);
+    }
+
     public function testReturns1IfRepositoryAlreadyExists(): void
     {
         $command = new MakeRepositoryCommand($this->srcPath);

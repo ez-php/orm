@@ -44,6 +44,11 @@ final class Blueprint
     private array $indexes = [];
 
     /**
+     * @var list<array{columns: list<string>, name: string}>
+     */
+    private array $uniqueIndexes = [];
+
+    /**
      * @var list<string>
      */
     private array $droppedIndexes = [];
@@ -671,6 +676,23 @@ final class Blueprint
     }
 
     /**
+     * Add a composite UNIQUE INDEX across one or more columns.
+     *
+     * @param string|list<string> $columns
+     * @param string              $name
+     *
+     * @return void
+     */
+    public function uniqueIndex(string|array $columns, string $name = ''): void
+    {
+        if (is_string($columns)) {
+            $columns = [$columns];
+        }
+
+        $this->uniqueIndexes[] = ['columns' => $columns, 'name' => $name];
+    }
+
+    /**
      * @param string $table
      *
      * @return string
@@ -778,12 +800,22 @@ final class Blueprint
             if ($idx['name'] !== '') {
                 $name = $this->quoteIdentifier($idx['name']);
             } else {
-                // Auto-generated name uses unquoted segments joined with underscores.
                 $name = $this->quoteIdentifier($table . '_' . implode('_', $idx['columns']) . '_index');
             }
 
             $cols = implode(', ', array_map($this->quoteIdentifier(...), $idx['columns']));
             $statements[] = 'CREATE INDEX ' . $name . ' ON ' . $quotedTable . ' (' . $cols . ')';
+        }
+
+        foreach ($this->uniqueIndexes as $idx) {
+            if ($idx['name'] !== '') {
+                $name = $this->quoteIdentifier($idx['name']);
+            } else {
+                $name = $this->quoteIdentifier($table . '_' . implode('_', $idx['columns']) . '_unique');
+            }
+
+            $cols = implode(', ', array_map($this->quoteIdentifier(...), $idx['columns']));
+            $statements[] = 'CREATE UNIQUE INDEX ' . $name . ' ON ' . $quotedTable . ' (' . $cols . ')';
         }
 
         return $statements;

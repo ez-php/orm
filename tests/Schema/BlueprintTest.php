@@ -1216,4 +1216,82 @@ final class BlueprintTest extends TestCase
         $this->assertSame('ALTER TABLE `tags` DROP COLUMN `taggable_id`', $stmts[1]);
         $this->assertSame('DROP INDEX `tags_taggable_type_taggable_id_index`', $stmts[2]);
     }
+
+    /**
+     * @return void
+     */
+    public function test_unique_index_generates_create_unique_index(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->id();
+        $bp->integer('user_id');
+        $bp->integer('post_id');
+        $bp->uniqueIndex(['user_id', 'post_id']);
+
+        $stmts = $bp->toIndexSql('user_posts');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame(
+            'CREATE UNIQUE INDEX `user_posts_user_id_post_id_unique` ON `user_posts` (`user_id`, `post_id`)',
+            $stmts[0],
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_unique_index_with_custom_name(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->id();
+        $bp->integer('x');
+        $bp->integer('y');
+        $bp->uniqueIndex(['x', 'y'], 'tiles_xy_unique');
+
+        $stmts = $bp->toIndexSql('tiles');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame(
+            'CREATE UNIQUE INDEX `tiles_xy_unique` ON `tiles` (`x`, `y`)',
+            $stmts[0],
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_unique_index_single_column(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->id();
+        $bp->string('email');
+        $bp->uniqueIndex('email');
+
+        $stmts = $bp->toIndexSql('users');
+
+        $this->assertCount(1, $stmts);
+        $this->assertSame(
+            'CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`)',
+            $stmts[0],
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_unique_index_and_regular_index_coexist(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->id();
+        $bp->integer('a');
+        $bp->integer('b');
+        $bp->index(['a']);
+        $bp->uniqueIndex(['a', 'b']);
+
+        $stmts = $bp->toIndexSql('t');
+
+        $this->assertCount(2, $stmts);
+        $this->assertStringStartsWith('CREATE INDEX', $stmts[0]);
+        $this->assertStringStartsWith('CREATE UNIQUE INDEX', $stmts[1]);
+    }
 }

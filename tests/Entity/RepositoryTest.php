@@ -632,6 +632,35 @@ final class RepositoryTest extends RepositoryTestCase
         self::assertNotNull($rows[0]['deleted_at']);
     }
 
+    public function testWithTrashedIncludesSoftDeletedRows(): void
+    {
+        $kept = new SoftDeleteEntity(['name' => 'Kept']);
+        $this->softDelete->save($kept);
+
+        $trashed = new SoftDeleteEntity(['name' => 'Trashed']);
+        $this->softDelete->save($trashed);
+        $this->softDelete->delete($trashed);
+
+        $all = $this->softDelete->withTrashed()->get();
+
+        self::assertCount(2, $all);
+    }
+
+    public function testOnlyTrashedReturnsOnlySoftDeletedRows(): void
+    {
+        $kept = new SoftDeleteEntity(['name' => 'Kept']);
+        $this->softDelete->save($kept);
+
+        $trashed = new SoftDeleteEntity(['name' => 'Trashed']);
+        $this->softDelete->save($trashed);
+        $this->softDelete->delete($trashed);
+
+        $result = $this->softDelete->onlyTrashed()->get();
+
+        self::assertCount(1, $result);
+        self::assertSame('Trashed', $result[0]->getAttribute('name'));
+    }
+
     // ─── Casts round-trip ────────────────────────────────────────────────────
 
     public function testCastRoundTripOnSaveAndFind(): void

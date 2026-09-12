@@ -386,6 +386,28 @@ abstract class AbstractRepository implements RepositoryInterface
     }
 
     /**
+     * Return a new EntityQueryBuilder that includes soft-deleted rows.
+     *
+     * No-op filter-wise when the entity does not use soft deletes.
+     *
+     * @return EntityQueryBuilder<T>
+     */
+    public function withTrashed(): EntityQueryBuilder
+    {
+        return $this->newQueryBuilder(applySoftDeleteFilter: false);
+    }
+
+    /**
+     * Return a new EntityQueryBuilder restricted to soft-deleted rows only.
+     *
+     * @return EntityQueryBuilder<T>
+     */
+    public function onlyTrashed(): EntityQueryBuilder
+    {
+        return $this->newQueryBuilder(applySoftDeleteFilter: false)->whereNotNull('deleted_at');
+    }
+
+    /**
      * Hydrate a single entity from a raw row without dirty tracking.
      *
      * Intended for use by relation classes that build entities outside the

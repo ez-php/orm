@@ -109,8 +109,8 @@ $repo->delete($post);           // sets deleted_at — row stays in the DB
 $post->trashed();               // true after soft delete
 
 // Include soft-deleted rows
-$all = $repo->query()->withTrashed()->get();
-$deleted = $repo->query()->onlyTrashed()->get();
+$all = $repo->withTrashed()->get();
+$deleted = $repo->onlyTrashed()->get();
 ```
 
 ### Relations
@@ -195,18 +195,20 @@ The `*ing` hooks fire before the DB operation; `*ed` hooks fire after.
 ```php
 use EzPhp\Orm\Schema\Schema;
 
-Schema::create('users', function (Blueprint $table) {
+$schema = new Schema($db); // $db: DatabaseInterface
+
+$schema->create('users', function (Blueprint $table) {
     $table->id();
     $table->string('name');
     $table->string('email')->unique();
     $table->timestamps();
 });
 
-Schema::table('users', function (Blueprint $table) {
+$schema->table('users', function (Blueprint $table) {
     $table->string('phone')->nullable();
 });
 
-Schema::drop('old_table');
+$schema->drop('old_table');
 ```
 
 ### Console commands

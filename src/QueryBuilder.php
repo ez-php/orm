@@ -1017,28 +1017,35 @@ final class QueryBuilder
     private function buildWhereClause(array $where): string
     {
         if ($where['type'] === 'basic') {
-            return "{$where['column']} {$where['operator']} ?";
+            $col = $this->quoteIdentifier($where['column']);
+
+            return "{$col} {$where['operator']} ?";
         }
 
         if ($where['type'] === 'in') {
+            $col = $this->quoteIdentifier($where['column']);
             $placeholders = implode(', ', array_fill(0, count($where['values']), '?'));
             $not = $where['not'] ? 'NOT ' : '';
 
-            return "{$where['column']} {$not}IN ($placeholders)";
+            return "{$col} {$not}IN ($placeholders)";
         }
 
         if ($where['type'] === 'subquery') {
+            $col = $this->quoteIdentifier($where['column']);
+
             // IN/NOT IN subquery uses parentheses around the subquery; scalar comparison uses scalar form.
-            return "{$where['column']} {$where['operator']} ({$where['subquery']->toSql()})";
+            return "{$col} {$where['operator']} ({$where['subquery']->toSql()})";
         }
 
         if ($where['type'] === 'json_contains') {
+            $col = $this->quoteIdentifier($where['column']);
+
             if ($this->driver === 'mysql') {
-                return "JSON_CONTAINS({$where['column']}, ?)";
+                return "JSON_CONTAINS({$col}, ?)";
             }
 
             // SQLite: check if the value exists in the JSON array
-            return "EXISTS (SELECT 1 FROM json_each({$where['column']}) WHERE json_each.value = ?)";
+            return "EXISTS (SELECT 1 FROM json_each({$col}) WHERE json_each.value = ?)";
         }
 
         if ($where['type'] === 'exists') {
@@ -1048,9 +1055,10 @@ final class QueryBuilder
         }
 
         // type === 'null'
+        $col = $this->quoteIdentifier($where['column']);
         $not = $where['not'] ? 'NOT ' : '';
 
-        return "{$where['column']} IS {$not}NULL";
+        return "{$col} IS {$not}NULL";
     }
 
     /**
@@ -1108,11 +1116,15 @@ final class QueryBuilder
      * bare wildcard `*` or qualified wildcard `table.*`. Every segment is validated
      * against `/^[a-zA-Z0-9_]+$/` before being wrapped in backticks.
      *
+     * Public and static so other classes in this package that build raw SQL
+     * outside a QueryBuilder instance (e.g. EntityBelongsToMany's pivot-table
+     * joins) can reuse the same quoting rules instead of re-deriving them.
+     *
      * @param string $name
      *
      * @return string
      */
-    private function quoteIdentifier(string $name): string
+    public static function quoteIdentifier(string $name): string
     {
         if ($name === '*') {
             return '*';

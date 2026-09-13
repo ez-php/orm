@@ -60,12 +60,18 @@ final class EntityBelongsToMany extends EntityRelation
             return [];
         }
 
+        $relatedTable = QueryBuilder::quoteIdentifier($this->relatedTable);
+        $pivotTable = QueryBuilder::quoteIdentifier($this->pivotTable);
+        $relatedLocalKey = QueryBuilder::quoteIdentifier($this->relatedLocalKey);
+        $relatedKey = QueryBuilder::quoteIdentifier($this->relatedKey);
+        $foreignKey = QueryBuilder::quoteIdentifier($this->foreignKey);
+
         $rows = $this->db->query(
-            "SELECT $this->relatedTable.*"
-            . " FROM $this->relatedTable"
-            . " JOIN $this->pivotTable"
-            . " ON $this->relatedTable.$this->relatedLocalKey = $this->pivotTable.$this->relatedKey"
-            . " WHERE $this->pivotTable.$this->foreignKey = ?",
+            "SELECT $relatedTable.*"
+            . " FROM $relatedTable"
+            . " JOIN $pivotTable"
+            . " ON $relatedTable.$relatedLocalKey = $pivotTable.$relatedKey"
+            . " WHERE $pivotTable.$foreignKey = ?",
             [$this->localValue]
         );
 
@@ -109,12 +115,18 @@ final class EntityBelongsToMany extends EntityRelation
 
         $placeholders = implode(', ', array_fill(0, count($ids), '?'));
 
+        $relatedTable = QueryBuilder::quoteIdentifier($this->relatedTable);
+        $pivotTable = QueryBuilder::quoteIdentifier($this->pivotTable);
+        $relatedLocalKey = QueryBuilder::quoteIdentifier($this->relatedLocalKey);
+        $relatedKey = QueryBuilder::quoteIdentifier($this->relatedKey);
+        $foreignKey = QueryBuilder::quoteIdentifier($this->foreignKey);
+
         $rows = $this->db->query(
-            "SELECT $this->relatedTable.*, $this->pivotTable.$this->foreignKey AS __pivot_fk"
-            . " FROM $this->relatedTable"
-            . " JOIN $this->pivotTable"
-            . " ON $this->relatedTable.$this->relatedLocalKey = $this->pivotTable.$this->relatedKey"
-            . " WHERE $this->pivotTable.$this->foreignKey IN ($placeholders)",
+            "SELECT $relatedTable.*, $pivotTable.$foreignKey AS __pivot_fk"
+            . " FROM $relatedTable"
+            . " JOIN $pivotTable"
+            . " ON $relatedTable.$relatedLocalKey = $pivotTable.$relatedKey"
+            . " WHERE $pivotTable.$foreignKey IN ($placeholders)",
             $ids
         );
 

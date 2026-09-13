@@ -303,6 +303,48 @@ final class QueryBuilderTest extends TestCase
         $this->assertCount(2, $rows);
     }
 
+    // --- identifier quoting / SQL injection guards ---
+
+    /**
+     * @return void
+     */
+    public function test_where_rejects_malicious_column_name(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new QueryBuilder($this->db, 'users'))->where('id; DROP TABLE users; --', 1)->get();
+    }
+
+    /**
+     * @return void
+     */
+    public function test_where_in_rejects_malicious_column_name(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new QueryBuilder($this->db, 'users'))->whereIn('id; DROP TABLE users; --', [1])->get();
+    }
+
+    /**
+     * @return void
+     */
+    public function test_where_null_rejects_malicious_column_name(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new QueryBuilder($this->db, 'users'))->whereNull('id; DROP TABLE users; --')->get();
+    }
+
+    /**
+     * @return void
+     */
+    public function test_where_json_contains_rejects_malicious_column_name(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new QueryBuilder($this->db, 'items'))->whereJsonContains('tags; DROP TABLE items; --', 'x')->get();
+    }
+
     // --- whereNull / whereNotNull ---
 
     /**

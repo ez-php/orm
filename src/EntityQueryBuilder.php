@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace EzPhp\Orm;
 
 use BadMethodCallException;
+use EzPhp\Cache\CacheInterface;
 use EzPhp\Orm\Relations\EntityRelation;
 use ReflectionMethod;
 use RuntimeException;
@@ -221,6 +222,24 @@ final class EntityQueryBuilder
     public function getQueryBuilder(): QueryBuilder
     {
         return $this->builder;
+    }
+
+    /**
+     * Cache the results of get() using the given driver and TTL.
+     *
+     * Delegates to the underlying QueryBuilder's cache(); the cache key is
+     * derived from the compiled SQL and bindings, same as raw QueryBuilder use.
+     *
+     * @param int            $ttl   Seconds to cache the result; 0 means never expire.
+     * @param CacheInterface $cache The cache driver to use.
+     *
+     * @return self<T>
+     */
+    public function cache(int $ttl, CacheInterface $cache): self
+    {
+        return clone($this, [
+            'builder' => $this->builder->cache($ttl, $cache),
+        ]);
     }
 
     /**

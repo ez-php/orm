@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Entity;
 
 use BadMethodCallException;
+use EzPhp\Cache\ArrayDriver;
 use EzPhp\Orm\AbstractRepository;
 use EzPhp\Orm\Entity;
 use EzPhp\Orm\EntityQueryBuilder;
@@ -384,5 +385,27 @@ final class EntityQueryBuilderTest extends RepositoryTestCase
 
         self::assertCount(2, $results);
         self::assertNull($results[0]->getAttribute('published'));
+    }
+
+    public function testCacheReturnsNewInstanceAndCachesResults(): void
+    {
+        $this->seedArticles();
+
+        $driver = new ArrayDriver();
+        $qb1 = $this->articles->query();
+        $qb2 = $qb1->cache(60, $driver);
+
+        self::assertNotSame($qb1, $qb2);
+
+        $first = $qb2->get();
+        $this->exec("INSERT INTO articles (title, published) VALUES ('Delta', 1)");
+        $second = $qb2->get();
+
+        self::assertCount(3, $first);
+        self::assertCount(3, $second);
+
+        $stats = $driver->stats();
+        self::assertSame(1, $stats->misses);
+        self::assertSame(1, $stats->hits);
     }
 }

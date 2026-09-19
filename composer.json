@@ -23,6 +23,7 @@
     "ez-php/cache": "^2.0"
   },
   "require-dev": {
+    "ez-php/dataloader": "^2.0",
     "ez-php/docker": "^2.0",
     "ez-php/testing-application": "^2.0",
     "ez-php/logging": "^2.0",

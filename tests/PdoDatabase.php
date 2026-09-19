@@ -20,6 +20,9 @@ final class PdoDatabase implements DatabaseInterface
 {
     private PDO $pdo;
 
+    /** Number of query() calls made so far — lets tests assert batching. */
+    public int $queryCount = 0;
+
     /**
      * @param string $dsn
      * @param string $username
@@ -40,6 +43,7 @@ final class PdoDatabase implements DatabaseInterface
      */
     public function query(string $sql, array $bindings = []): array
     {
+        $this->queryCount++;
         $stmt = $this->pdo->prepare($sql);
 
         foreach ($bindings as $index => $value) {

@@ -135,6 +135,21 @@ $author = $postRepo->author($post)->getResult();
 $posts = $postRepo->query()->with('author')->get();
 ```
 
+`with()` already loads a relation for a whole result set in one query. If you instead access
+relations lazily inside a loop, `RelationBatcher` (requires `ez-php/dataloader`) collapses those
+per-entity queries into one per relation:
+
+```php
+use EzPhp\Orm\Relations\RelationBatcher;
+
+$batcher = new RelationBatcher(); // one per request/unit of work — it memoizes by key
+$pending = array_map(fn ($post) => $batcher->belongsTo($postRepo->author($post)), $posts);
+$authors = array_map(fn ($d) => $d->get(), $pending); // a single users query
+```
+
+`hasOne()` and `hasMany()` work the same way (`hasMany` resolves to a list, empty when there are none).
+Many-to-many relations are not batched.
+
 ### Custom casts
 
 ```php

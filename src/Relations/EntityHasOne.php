@@ -44,6 +44,30 @@ final class EntityHasOne extends EntityRelation
     }
 
     /**
+     * The owning entity's key value this relation was created with (lazy-load key).
+     *
+     * @internal Used by RelationBatcher; not part of the public relation API.
+     *
+     * @return mixed
+     */
+    public function getLazyKey(): mixed
+    {
+        return $this->ownerValue;
+    }
+
+    /**
+     * The repository managing the related entity.
+     *
+     * @internal Used by RelationBatcher; not part of the public relation API.
+     *
+     * @return AbstractRepository<TRelated>
+     */
+    public function getRelatedRepository(): AbstractRepository
+    {
+        return $this->relatedRepo;
+    }
+
+    /**
      * @return string
      */
     public function getOwnerKey(): string

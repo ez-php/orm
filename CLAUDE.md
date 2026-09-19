@@ -274,7 +274,8 @@ src/
 │   ├── EntityHasMany.php             — One-to-many: FK on related entity
 │   ├── EntityHasOne.php              — One-to-one: FK on related entity
 │   ├── EntityBelongsTo.php           — Inverse of HasMany/HasOne: FK on owning entity
-│   └── EntityBelongsToMany.php       — Many-to-many via pivot table; raw SQL join
+│   ├── EntityBelongsToMany.php       — Many-to-many via pivot table; raw SQL join
+│   └── RelationBatcher.php           — Opt-in DataLoader-backed batching of lazy belongsTo/hasOne/hasMany access (soft dep on ez-php/dataloader)
 └── Schema/
     ├── Schema.php                    — DDL façade: create/table/drop/dropIfExists/hasTable/hasColumn/rename/dump; SQLite version guard for RENAME COLUMN
     ├── Blueprint.php                 — Column and constraint definitions; generates CREATE/ALTER/INDEX/DROP SQL; driver-aware type mapping
@@ -509,6 +510,8 @@ All relations extend `EntityRelation` and implement:
 | `EntityBelongsTo` | many → one | FK on **owning** entity |
 | `EntityBelongsToMany` | many ↔ many | pivot table; raw SQL join |
 
+`RelationBatcher` (opt-in, not part of `EntityRelation`): `belongsTo()`/`hasOne()`/`hasMany()` take a lazily-created relation and return a `Deferred` (`ez-php/dataloader`); the first `get()` resolves every queued owner key of the same relation via one `findWhereIn`. Loaders are keyed by relation kind + related repository + join keys and memoize per owner key. `getLazyKey()`/`getRelatedRepository()` on the three relation classes are `@internal` accessors for it.
+
 ---
 
 ### Schema / Blueprint (`src/Schema/`)
@@ -621,6 +624,11 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 - **`ez-php/logging` is a soft dependency, `require-dev` only.** `LoggingDatabase` implements `DatabaseInterface` and uses `LoggerInterface`, but `composer.json`'s `require` block stays limited to `ez-php/contracts`/`ez-php/console`/`ez-php/cache` — same reasoning as `ez-php/mail`'s `Job\SendMailableJob`: a hard dependency would force `ez-php/logging` on every application that installs `ez-php/orm`, even ones with no query logging. PSR-4 only resolves `LoggingDatabase.php` (and therefore `LoggerInterface`) when something actually references the class.
 
 ---
+
+- **`with()` was already batched; the remaining N+1 is lazy access, so batching is an opt-in layer, not a rewrite.** `EntityQueryBuilder::with()` issues one `findWhereIn` per relation for the whole result set. What still costs one query per entity is calling `getResult()`/`getResults()` on each entity's lazily-created relation. `RelationBatcher` (built on `ez-php/dataloader`, unchanged) collects those calls and resolves them in one query per relation. Rewriting `with()` onto DataLoader would touch the core path for no query-count gain, so it was deliberately not done; existing relation classes' behaviour is unchanged.
+- **`ez-php/dataloader` is a require-dev-only (soft) dependency.** PSR-4 resolves `RelationBatcher` only when referenced, so the ORM works without dataloader installed (same reasoning as `ez-php/mail`'s `Job\SendMailableJob`).
+- **A `RelationBatcher` is per-unit-of-work, not a singleton.** Its DataLoaders memoize by owner key; a long-lived instance would serve stale rows. Construct one per request/task.
+- **`belongsToMany` is not batched.** Its lazy access joins through a pivot with an owner-specific query shape; batching it needs a separate design and is out of scope here.
 
 ## Testing Approach
 

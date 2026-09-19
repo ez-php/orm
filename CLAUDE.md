@@ -255,7 +255,8 @@ Data Mapper ORM, fluent Query Builder, and Schema Builder.
 ```
 src/
 ├── Entity.php                        — Abstract Data Mapper entity base; attributes, casts, fillable guards, relation storage
-├── AbstractRepository.php            — Abstract repository base; persistence (INSERT/UPDATE/DELETE), dirty tracking via SplObjectStorage, relations, eager-load
+├── AbstractRepository.php            — Abstract repository base; persistence (INSERT/UPDATE/DELETE), dirty tracking via DirtyTracker, relations, eager-load
+├── DirtyTracker.php                  — Snapshot store keyed by entity identity; isTracked()/track()/forget()/dirty(); used by AbstractRepository
 ├── EntityQueryBuilder.php            — Typed query builder for entities; wraps QueryBuilder; eager-load with(), withCount()
 ├── EntityServiceProvider.php         — Calls Entity::setDatabase($db) in boot()
 ├── Hydrator.php                      — Converts raw DB rows → Entity instances and Entity attributes → storage arrays
@@ -629,6 +630,9 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 - **`ez-php/dataloader` is a require-dev-only (soft) dependency.** PSR-4 resolves `RelationBatcher` only when referenced, so the ORM works without dataloader installed (same reasoning as `ez-php/mail`'s `Job\SendMailableJob`).
 - **A `RelationBatcher` is per-unit-of-work, not a singleton.** Its DataLoaders memoize by owner key; a long-lived instance would serve stale rows. Construct one per request/task.
 - **`belongsToMany` is not batched.** Its lazy access joins through a pivot with an owner-specific query shape; batching it needs a separate design and is out of scope here.
+- **Dirty tracking lives in `DirtyTracker`, not in `AbstractRepository` or `Entity`.** The snapshot store (`SplObjectStorage` keyed by entity identity) and the value normalisation used for comparison (`CastableInterface` → storage form, arrays → JSON) are a self-contained concern; `AbstractRepository` owns one instance per repository. Entities stay ignorant of their persistence history.
+- **`QueryBuilder` (~1200 lines) and `AbstractRepository` (~700 lines) are deliberately kept whole.** `QueryBuilder` is one fluent builder whose where/join/order state is read by every terminal operation (`get`, aggregates, `insert*`, `upsert`, `update`, `delete`, `paginate`, `chunk`); splitting the terminals off would force the builder state to be exposed or copied between classes for no reuse. Most of its length is per-method docblocks and the operator/identifier validation that must stay next to the SQL it guards. Revisit if a second SQL dialect or a second consumer of the compiled clause appears (then extract a grammar/compiler class); do not split before that.
+
 
 ## Testing Approach
 

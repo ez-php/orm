@@ -10,19 +10,18 @@ use EzPhp\Orm\Relations\EntityBelongsTo;
 use EzPhp\Orm\Relations\EntityBelongsToMany;
 use EzPhp\Orm\Relations\EntityHasMany;
 use EzPhp\Orm\Relations\EntityHasOne;
-use SplObjectStorage;
 
 /**
  * Class AbstractRepository
  *
  * Base class for all Data Mapper repositories. Handles persistence (INSERT/UPDATE/DELETE)
- * with repository-side dirty tracking via SplObjectStorage: a snapshot of each entity's
+ * with repository-side dirty tracking (see DirtyTracker): a snapshot of each entity's
  * attributes is stored at load time and diffed at save() to determine which columns to UPDATE.
  *
  * Why repository-side dirty tracking instead of entity-side?
  * Keeping $original inside the entity couples the entity to its own persistence history,
  * which contradicts the Data Mapper principle of entities being unaware of the DB.
- * SplObjectStorage keyed by entity identity keeps entities clean.
+ * A snapshot store keyed by entity identity keeps entities clean.
  *
  * ## Soft-delete bypass warning
  *
@@ -48,12 +47,9 @@ abstract class AbstractRepository implements RepositoryInterface
     protected readonly Hydrator $hydrator;
 
     /**
-     * Attribute snapshots for dirty tracking.
-     * Keyed by entity object identity; value is the attributes array at load time.
-     *
-     * @var SplObjectStorage<Entity, array<string, mixed>>
+     * Dirty tracking for the entities this repository loaded or persisted.
      */
-    private SplObjectStorage $snapshots;
+    private DirtyTracker $tracker;
 
     /**
      * @param DatabaseInterface|null $db       Explicit connection; falls back to Entity::database() when null.
@@ -65,10 +61,7 @@ abstract class AbstractRepository implements RepositoryInterface
     ) {
         $this->db = $db ?? Entity::database();
         $this->hydrator = $hydrator ?? new Hydrator();
-
-        /** @var SplObjectStorage<Entity, array<string, mixed>> $snapshots */
-        $snapshots = new SplObjectStorage();
-        $this->snapshots = $snapshots;
+        $this->tracker = new DirtyTracker();
     }
 
     /**
@@ -117,7 +110,7 @@ abstract class AbstractRepository implements RepositoryInterface
         $table = $entityClass::resolveTable();
 
         if ($entityClass::isPrimaryKeyComposite()) {
-            if ($this->snapshots->offsetExists($entity)) {
+            if ($this->tracker->isTracked($entity)) {
                 $this->performUpdateComposite($entity, $table);
             } else {
                 $this->performInsertComposite($entity, $table);
@@ -129,7 +122,7 @@ abstract class AbstractRepository implements RepositoryInterface
         $pk = $entityClass::scalarPrimaryKey();
         $id = $entity->getAttribute($pk);
 
-        if ($id === null || !$this->snapshots->offsetExists($entity)) {
+        if ($id === null || !$this->tracker->isTracked($entity)) {
             $this->performInsert($entity, $table, $pk);
         } else {
             $this->performUpdate($entity, $table, $pk, $id);
@@ -164,7 +157,7 @@ abstract class AbstractRepository implements RepositoryInterface
             }
 
             $qb->delete();
-            $this->snapshots->offsetUnset($entity);
+            $this->tracker->forget($entity);
 
             return;
         }
@@ -182,10 +175,10 @@ abstract class AbstractRepository implements RepositoryInterface
                 ->where($pk, $id)
                 ->update(['deleted_at' => $now]);
             $entity->setAttribute('deleted_at', $now);
-            $this->trackSnapshot($entity);
+            $this->tracker->track($entity);
         } else {
             (new QueryBuilder($this->db, $table))->where($pk, $id)->delete();
-            $this->snapshots->offsetUnset($entity);
+            $this->tracker->forget($entity);
         }
     }
 
@@ -370,7 +363,7 @@ abstract class AbstractRepository implements RepositoryInterface
         $current = $entity->getAttribute($column);
         $entity->setAttribute($column, is_numeric($current) ? $current + $amount : $amount);
 
-        $this->trackSnapshot($entity);
+        $this->tracker->track($entity);
 
         return $affected;
     }
@@ -440,7 +433,7 @@ abstract class AbstractRepository implements RepositoryInterface
     public function hydrateTracked(array $row): Entity
     {
         $entity = $this->hydrator->hydrate($this->entityClass(), $row);
-        $this->trackSnapshot($entity);
+        $this->tracker->track($entity);
 
         /** @var T */
         return $entity;
@@ -580,82 +573,6 @@ abstract class AbstractRepository implements RepositoryInterface
     }
 
     /**
-     * Record the current attributes of an entity as its dirty-tracking baseline.
-     *
-     * @param Entity $entity
-     *
-     * @return void
-     */
-    private function trackSnapshot(Entity $entity): void
-    {
-        $this->snapshots[$entity] = $entity->getAttributes();
-    }
-
-    /**
-     * Compute the dirty attributes by comparing current state against the snapshot.
-     *
-     * When no snapshot exists all attributes are considered dirty (new entity).
-     *
-     * @param Entity $entity
-     *
-     * @return array<string, mixed>
-     */
-    private function getDirty(Entity $entity): array
-    {
-        if (!$this->snapshots->offsetExists($entity)) {
-            return $entity->getAttributes();
-        }
-
-        $snapshot = $this->snapshots[$entity];
-        $dirty = [];
-        $casts = $entity::getCasts();
-
-        foreach ($entity->getAttributes() as $key => $value) {
-            $current = $this->normalizeForComparison($key, $value, $casts);
-            $original = $this->normalizeForComparison($key, $snapshot[$key] ?? null, $casts);
-
-            if (!array_key_exists($key, $snapshot) || $current !== $original) {
-                $dirty[$key] = $value;
-            }
-        }
-
-        return $dirty;
-    }
-
-    /**
-     * Normalize a value for dirty comparison.
-     *
-     * CastableInterface values are reduced to their storage form; arrays are
-     * JSON-encoded so that array/JSON round-trips compare as equal.
-     *
-     * @param string               $key
-     * @param mixed                $value
-     * @param array<string, string> $casts
-     *
-     * @return mixed
-     */
-    private function normalizeForComparison(string $key, mixed $value, array $casts): mixed
-    {
-        if ($value === null) {
-            return $value;
-        }
-
-        if (array_key_exists($key, $casts)) {
-            $cast = $casts[$key];
-
-            if (is_a($cast, CastableInterface::class, true) && $value instanceof CastableInterface) {
-                return $value->castTo();
-            }
-        }
-
-        if (is_array($value)) {
-            return json_encode($value);
-        }
-
-        return $value;
-    }
-
-    /**
      * @param Entity $entity
      * @param string $table
      * @param string $primaryKey
@@ -689,7 +606,7 @@ abstract class AbstractRepository implements RepositoryInterface
                 $entity->setAttribute($primaryKey, is_numeric($lastId) ? (int) $lastId : $lastId);
             }
 
-            $this->trackSnapshot($entity);
+            $this->tracker->track($entity);
         }
     }
 
@@ -725,7 +642,7 @@ abstract class AbstractRepository implements RepositoryInterface
         $result = (new QueryBuilder($this->db, $table))->insert($data);
 
         if ($result) {
-            $this->trackSnapshot($entity);
+            $this->tracker->track($entity);
         }
     }
 
@@ -740,7 +657,7 @@ abstract class AbstractRepository implements RepositoryInterface
     private function performUpdate(Entity $entity, string $table, string $primaryKey, mixed $id): void
     {
         $entityClass = $this->entityClass();
-        $dirty = $this->getDirty($entity);
+        $dirty = $this->tracker->dirty($entity);
         unset($dirty[$primaryKey]);
 
         if ($entityClass::hasTimestamps()) {
@@ -768,7 +685,7 @@ abstract class AbstractRepository implements RepositoryInterface
             ->update($dirtyExtracted);
 
         if ($affected > 0) {
-            $this->trackSnapshot($entity);
+            $this->tracker->track($entity);
         }
     }
 
@@ -781,7 +698,7 @@ abstract class AbstractRepository implements RepositoryInterface
     private function performUpdateComposite(Entity $entity, string $table): void
     {
         $entityClass = $this->entityClass();
-        $dirty = $this->getDirty($entity);
+        $dirty = $this->tracker->dirty($entity);
 
         foreach ((array) $entityClass::getPrimaryKey() as $pkCol) {
             unset($dirty[$pkCol]);
@@ -813,7 +730,7 @@ abstract class AbstractRepository implements RepositoryInterface
         $affected = $qb->update($dirtyExtracted);
 
         if ($affected > 0) {
-            $this->trackSnapshot($entity);
+            $this->tracker->track($entity);
         }
     }
 }

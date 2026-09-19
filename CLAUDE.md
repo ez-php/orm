@@ -265,6 +265,7 @@ src/
 ├── DuplicateKeyException.php         — Thrown by save() on duplicate-key violations (detects via PDOException code)
 ├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem/isFirstPage/isLastPage/from/to
 ├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache
+├── LoggingDatabase.php               — DatabaseInterface decorator logging SQL + bindings + duration via ez-php/logging (soft dependency — require-dev only)
 ├── Console/
 │   ├── MakeEntityCommand.php         — Scaffolds an Entity subclass in src/Entities/
 │   └── MakeRepositoryCommand.php     — Scaffolds an AbstractRepository subclass in src/Repositories/
@@ -288,6 +289,7 @@ tests/
 ├── RepositoryTestCase.php            — Extends DatabaseTestCase; wires Entity::setDatabase(); resets in tearDown
 ├── QueryBuilderTest.php              — Covers all QB clauses and execution methods
 ├── QueryBuilderCacheTest.php         — Covers QB cache() integration with CacheInterface
+├── LoggingDatabaseTest.php           — Covers LoggingDatabase: delegation, SQL/bindings/duration logging, custom log level, transaction() passthrough without per-call logging
 ├── PaginatorTest.php                 — Unit tests for Paginator value object (all accessors, edge cases)
 ├── PaginationTest.php                — Integration tests for QB/EQB paginate() and chunk()
 ├── Entity/EntityTest.php             — Covers Entity CRUD, dirty tracking, casts, soft deletes, relations
@@ -480,6 +482,17 @@ Fluent builder for raw SQL. All clause methods return a clone — the original i
 
 ---
 
+### LoggingDatabase (`src/LoggingDatabase.php`)
+
+`DatabaseInterface` decorator — implements the same interface it wraps, so it composes anywhere a connection is expected, including as the `$db` passed straight into `QueryBuilder`/`AbstractRepository`/`Entity::setDatabase()`. `query()`/`execute()` time the delegated call and log SQL + bindings + duration (ms, rounded to 2 decimals) via an injected `LoggerInterface`, at a configurable `LogLevel` (default `DEBUG`). `transaction()`/`getPdo()` delegate without their own logging — a transaction's inner `query()`/`execute()` calls are already logged individually if routed through the same `LoggingDatabase` instance.
+
+```php
+$db = new LoggingDatabase($realDb, $logger); // opt-in, application wires it explicitly
+$repo = new UserRepository($db);
+```
+
+---
+
 ### Relations (`src/Relations/`)
 
 All relations extend `EntityRelation` and implement:
@@ -605,6 +618,7 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 - **SQLite 3.25+ required for `RENAME COLUMN`** — `Schema::table()` inspects pending ALTER statements and throws a descriptive `RuntimeException` if the running SQLite version is below 3.25.0. The table-recreation fallback is not implemented because PHP 8.5 targets platforms where 3.25+ is always available.
 - **`Schema::dump()` is SQLite/MySQL only** — The dump logic uses `sqlite_master` or `SHOW CREATE TABLE`. Other drivers are not supported.
 - **`QueryBuilder` uses clone-based withers** — Every clause method clones the builder so intermediate states can be reused without side effects.
+- **`ez-php/logging` is a soft dependency, `require-dev` only.** `LoggingDatabase` implements `DatabaseInterface` and uses `LoggerInterface`, but `composer.json`'s `require` block stays limited to `ez-php/contracts`/`ez-php/console`/`ez-php/cache` — same reasoning as `ez-php/mail`'s `Job\SendMailableJob`: a hard dependency would force `ez-php/logging` on every application that installs `ez-php/orm`, even ones with no query logging. PSR-4 only resolves `LoggingDatabase.php` (and therefore `LoggerInterface`) when something actually references the class.
 
 ---
 

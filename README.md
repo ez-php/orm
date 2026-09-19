@@ -211,6 +211,21 @@ $schema->table('users', function (Blueprint $table) {
 $schema->drop('old_table');
 ```
 
+### Query logging
+
+`LoggingDatabase` decorates any `DatabaseInterface` and logs SQL + bindings + duration for
+every `query()`/`execute()` call via `ez-php/logging` (a soft dependency — install it
+separately, since it's declared in `require-dev` here, not `require`):
+
+```php
+use EzPhp\Orm\LoggingDatabase;
+
+$db = new LoggingDatabase($realDb, $logger); // $logger implements EzPhp\Logging\LoggerInterface
+$repo = new UserRepository($db);
+```
+
+Opt-in only — wrap the connection you pass in yourself; nothing logs by default.
+
 ### Console commands
 
 | Command | Description |
@@ -233,6 +248,7 @@ $schema->drop('old_table');
 | `DuplicateKeyException` | Thrown by `save()` on duplicate-key violations |
 | `Paginator` | Immutable page-of-results value object |
 | `QueryBuilder` | Fluent SQL builder for raw rows; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache |
+| `LoggingDatabase` | `DatabaseInterface` decorator logging SQL + bindings + duration |
 | `EntityHasMany` | One-to-many relation (FK on related entity) |
 | `EntityHasOne` | One-to-one relation (FK on related entity) |
 | `EntityBelongsTo` | Inverse of HasMany/HasOne (FK on owning entity) |

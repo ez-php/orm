@@ -175,8 +175,8 @@ Two things stay manual on purpose:
 - **`CLAUDE.md` part 1** — only the `# Package:` section is generated. Run
   `composer guidelines:sync` afterwards; baking a guidelines copy into the generator
   would recreate the drift the sync script exists to prevent.
-- **The host-port table below** (`--services` only) — editing it marks all ~40
-  `CLAUDE.md` copies as drifted at once, so the next `composer full` would fail for
+- **The host-port table below** (`--services` only) — editing it marks every
+  `CLAUDE.md` copy as drifted at once, so the next `composer full` would fail for
   a brand-new module. The generator prints which ports to claim instead.
 
 ### 4 — Docker scaffold
@@ -263,7 +263,7 @@ src/
 ├── CastableInterface.php             — Interface for custom value-object casts: castFrom(mixed)/castTo(): mixed
 ├── EntityObserverInterface.php       — Lifecycle observer contract: creating/created/updating/updated/deleting/deleted hooks
 ├── ObservableRepositoryTrait.php     — Mixin for AbstractRepository subclasses; registers observers and fires lifecycle hooks around save/delete
-├── DuplicateKeyException.php         — Thrown by save() on duplicate-key violations (detects via PDOException code)
+├── DuplicateKeyException.php         — Thrown by `QueryBuilder::insert()`/`insertBatch()` (so every repository `save()` INSERT) on duplicate-key violations; `fromPdo()` recognises MySQL 1062, PG 23505, SQLite UNIQUE/PRIMARY KEY
 ├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem/isFirstPage/isLastPage/from/to
 ├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache
 ├── LoggingDatabase.php               — DatabaseInterface decorator logging SQL + bindings + duration via ez-php/logging (soft dependency — require-dev only)

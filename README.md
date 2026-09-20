@@ -260,7 +260,7 @@ Opt-in only — wrap the connection you pass in yourself; nothing logs by defaul
 | `EntityServiceProvider` | Calls `Entity::setDatabase($db)` in `boot()` |
 | `Hydrator` | Converts raw DB rows → Entity instances and Entity attributes → storage arrays |
 | `CastableInterface` | Interface for custom value-object casts: `castFrom()`/`castTo()` |
-| `DuplicateKeyException` | Thrown by `save()` on duplicate-key violations |
+| `DuplicateKeyException` | Thrown on duplicate-key violations by `QueryBuilder::insert()`/`insertBatch()` and therefore by repository `save()` (original `PDOException` is `getPrevious()`) |
 | `Paginator` | Immutable page-of-results value object |
 | `QueryBuilder` | Fluent SQL builder for raw rows; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache |
 | `LoggingDatabase` | `DatabaseInterface` decorator logging SQL + bindings + duration |

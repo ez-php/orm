@@ -7,6 +7,8 @@ namespace EzPhp\Orm;
 use EzPhp\Cache\CacheInterface;
 use EzPhp\Contracts\DatabaseInterface;
 use InvalidArgumentException;
+use PDOException;
+use PDOStatement;
 
 /**
  * Class QueryBuilder
@@ -560,7 +562,7 @@ final class QueryBuilder
 
         $stmt = $this->db->getPdo()->prepare($sql);
 
-        return $stmt->execute(array_values($data));
+        return $this->executeInsert($stmt, array_values($data));
     }
 
     /**
@@ -599,7 +601,7 @@ final class QueryBuilder
 
         $stmt = $this->db->getPdo()->prepare($sql);
 
-        return $stmt->execute($bindings);
+        return $this->executeInsert($stmt, $bindings);
     }
 
     /**
@@ -1147,6 +1149,25 @@ final class QueryBuilder
         }, $parts);
 
         return implode('.', $quoted);
+    }
+
+    /**
+     * Execute an INSERT statement, translating a duplicate-key violation into {@see DuplicateKeyException}.
+     *
+     * @param PDOStatement      $stmt
+     * @param array<int, mixed> $bindings
+     *
+     * @return bool
+     *
+     * @throws DuplicateKeyException
+     */
+    private function executeInsert(PDOStatement $stmt, array $bindings): bool
+    {
+        try {
+            return $stmt->execute($bindings);
+        } catch (PDOException $e) {
+            throw DuplicateKeyException::fromPdo($e) ?? $e;
+        }
     }
 
     /**

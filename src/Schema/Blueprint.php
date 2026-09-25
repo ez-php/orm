@@ -934,6 +934,7 @@ final class Blueprint
         $def .= $col->isNullable() ? ' NULL' : ' NOT NULL';
 
         if ($col->hasDefaultValue()) {
+            $this->assertDefaultAllowed($col);
             $def .= $this->compileDefault($col->getDefaultValue());
         }
 
@@ -950,6 +951,38 @@ final class Blueprint
         }
 
         return $def;
+    }
+
+    /**
+     * Reject a literal DEFAULT on TEXT/BLOB/JSON columns for non-SQLite drivers.
+     *
+     * MySQL refuses such DDL at run time (error 1101), so a migration would only
+     * fail when it is executed against the production database. NULL and
+     * Expression defaults (e.g. Expression::raw("('*')"), MySQL 8.0.13+) are allowed.
+     *
+     * @param ColumnDefinition $col
+     *
+     * @return void
+     *
+     * @throws InvalidArgumentException
+     */
+    private function assertDefaultAllowed(ColumnDefinition $col): void
+    {
+        $value = $col->getDefaultValue();
+
+        if ($this->isSqlite() || $value === null || $value instanceof Expression) {
+            return;
+        }
+
+        if (preg_match('/^(TINY|MEDIUM|LONG)?(TEXT|BLOB)$|^JSON$/i', $col->sqlType) === 1) {
+            throw new InvalidArgumentException(sprintf(
+                "Column '%s' (%s) cannot have a literal DEFAULT on %s: MySQL rejects it. "
+                . "Use a VARCHAR column, a nullable column without a default, or Expression::raw(\"('value')\").",
+                $col->name,
+                $col->sqlType,
+                $this->driver,
+            ));
+        }
     }
 
     /**

@@ -1000,6 +1000,64 @@ final class BlueprintTest extends TestCase
         $this->assertCount(1, $idxSql);
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function mysqlColumnsWithoutLiteralDefaults(): iterable
+    {
+        yield 'text' => ['text'];
+        yield 'mediumText' => ['mediumText'];
+        yield 'longText' => ['longText'];
+        yield 'binary (BLOB)' => ['binary'];
+        yield 'json' => ['json'];
+    }
+
+    /**
+     * MySQL rejects a literal DEFAULT on TEXT/BLOB/JSON columns (error 1101);
+     * the migration would only fail at run time, so Blueprint refuses to build it.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('mysqlColumnsWithoutLiteralDefaults')]
+    public function test_literal_default_on_text_blob_json_is_rejected_on_mysql(string $method): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->{$method}('abilities')->default('*');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('abilities');
+
+        $bp->toCreateSql('t');
+    }
+
+    public function test_literal_default_on_text_is_allowed_on_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->text('abilities')->default('*');
+
+        $this->assertStringContainsString("DEFAULT '*'", $bp->toCreateSql('t'));
+    }
+
+    public function test_null_and_expression_defaults_on_text_are_allowed_on_mysql(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->text('notes')->nullable()->default(null);
+        $bp->text('abilities')->default(Expression::raw("('*')"));
+
+        $sql = $bp->toCreateSql('t');
+
+        $this->assertStringContainsString('`notes` TEXT NULL DEFAULT NULL', $sql);
+        $this->assertStringContainsString("`abilities` TEXT NOT NULL DEFAULT ('*')", $sql);
+    }
+
+    public function test_literal_default_on_text_is_rejected_in_alter_statements_too(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->text('bio')->default('');
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $bp->toAlterSql('users');
+    }
+
     // =========================================================================
     // Step 6 — Expression-based default values
     // =========================================================================

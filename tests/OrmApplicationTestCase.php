@@ -10,6 +10,10 @@ use RuntimeException;
 /**
  * Base class for ORM module tests that need a bootstrapped Application.
  *
+ * Deliberately not named `ApplicationTestCase`: that name is shared, identical
+ * test infrastructure in several packages (see check_test_classes.php), and the
+ * aggregated run would load whichever copy Composer finds first.
+ *
  * Creates a temporary application root with a config/db.php that configures
  * an in-memory SQLite database. This satisfies DatabaseServiceProvider without
  * requiring a live MySQL instance, and keeps all service bindings lazy.
@@ -19,7 +23,7 @@ use RuntimeException;
  *
  * @package Tests
  */
-abstract class ApplicationTestCase extends EzPhpApplicationTestCase
+abstract class OrmApplicationTestCase extends EzPhpApplicationTestCase
 {
     /**
      * @return string

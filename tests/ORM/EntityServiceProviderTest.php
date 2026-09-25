@@ -7,13 +7,15 @@ namespace Tests\ORM;
 use EzPhp\Application\Application;
 use EzPhp\Contracts\EzPhpException;
 use EzPhp\Orm\AbstractRepository;
+use EzPhp\Orm\Console\MakeEntityCommand;
+use EzPhp\Orm\Console\MakeRepositoryCommand;
 use EzPhp\Orm\Entity;
 use EzPhp\Orm\EntityServiceProvider;
 use EzPhp\Orm\Hydrator;
 use EzPhp\Orm\QueryBuilder;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
-use Tests\ApplicationTestCase;
+use Tests\OrmApplicationTestCase;
 
 /**
  * Class EntityServiceProviderTest
@@ -25,7 +27,9 @@ use Tests\ApplicationTestCase;
 #[UsesClass(Entity::class)]
 #[UsesClass(Hydrator::class)]
 #[UsesClass(QueryBuilder::class)]
-final class EntityServiceProviderTest extends ApplicationTestCase
+#[UsesClass(MakeEntityCommand::class)]
+#[UsesClass(MakeRepositoryCommand::class)]
+final class EntityServiceProviderTest extends OrmApplicationTestCase
 {
     /**
      * @param Application $app
@@ -76,6 +80,21 @@ final class EntityServiceProviderTest extends ApplicationTestCase
         $repo = new EntityServiceProviderTestEntityRepository();
 
         $this->assertInstanceOf(AbstractRepository::class, $repo);
+    }
+
+    /**
+     * Regression: make:entity / make:repository were documented but never registered.
+     *
+     * @return void
+     */
+    public function test_boot_registers_scaffolding_commands(): void
+    {
+        $commands = $this->app()->getCommands();
+
+        $this->assertContains(MakeEntityCommand::class, $commands);
+        $this->assertContains(MakeRepositoryCommand::class, $commands);
+        $this->assertInstanceOf(MakeEntityCommand::class, $this->app()->make(MakeEntityCommand::class));
+        $this->assertInstanceOf(MakeRepositoryCommand::class, $this->app()->make(MakeRepositoryCommand::class));
     }
 }
 

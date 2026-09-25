@@ -245,8 +245,12 @@ Opt-in only — wrap the connection you pass in yourself; nothing logs by defaul
 
 | Command | Description |
 |---|---|
-| `make:entity` | Scaffolds an `Entity` subclass in `src/Entities/` |
-| `make:repository` | Scaffolds an `AbstractRepository` subclass in `src/Repositories/` |
+| `make:entity` | Scaffolds an `Entity` subclass in `app/Entities/` |
+| `make:repository` | Scaffolds an `AbstractRepository` subclass in `app/Repositories/` |
+
+Both are registered automatically by `EntityServiceProvider::boot()` when the application implements
+`CommandRegistryInterface` (the ez-php `Application` does). They write relative to the working directory
+(`<cwd>/app/…`) — run `php ez` from the project root.
 
 ## Classes
 
@@ -257,7 +261,7 @@ Opt-in only — wrap the connection you pass in yourself; nothing logs by defaul
 | `EntityObserverInterface` | Lifecycle hook contract: `creating/created/updating/updated/deleting/deleted` |
 | `ObservableRepositoryTrait` | Adds observer support to a repository; fires hooks around `save()` and `delete()` |
 | `EntityQueryBuilder` | Typed fluent query builder for entities; `with()`, `withCount()`, `paginate()` |
-| `EntityServiceProvider` | Calls `Entity::setDatabase($db)` in `boot()` |
+| `EntityServiceProvider` | Calls `Entity::setDatabase($db)` in `boot()`; registers `make:entity` / `make:repository` |
 | `Hydrator` | Converts raw DB rows → Entity instances and Entity attributes → storage arrays |
 | `CastableInterface` | Interface for custom value-object casts: `castFrom()`/`castTo()` |
 | `DuplicateKeyException` | Thrown on duplicate-key violations by `QueryBuilder::insert()`/`insertBatch()` and therefore by repository `save()` (original `PDOException` is `getPrevious()`) |

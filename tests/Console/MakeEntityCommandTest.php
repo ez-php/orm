@@ -141,4 +141,27 @@ final class MakeEntityCommandTest extends TestCase
 
         self::assertSame(1, $code);
     }
+
+    public function testDefaultsToAppDirectoryUnderTheWorkingDirectory(): void
+    {
+        $cwd = getcwd();
+        self::assertIsString($cwd);
+        chdir($this->srcPath);
+
+        try {
+            ob_start();
+            $exit = (new MakeEntityCommand())->handle(['Order']);
+            $output = (string) ob_get_clean();
+        } finally {
+            chdir($cwd);
+        }
+
+        self::assertSame(0, $exit);
+        self::assertFileExists($this->srcPath . '/app/Entities/Order.php');
+        self::assertStringContainsString('Created: app/Entities/Order.php', $output);
+
+        unlink($this->srcPath . '/app/Entities/Order.php');
+        rmdir($this->srcPath . '/app/Entities');
+        rmdir($this->srcPath . '/app');
+    }
 }

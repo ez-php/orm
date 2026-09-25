@@ -148,9 +148,11 @@ php make_module.php <name> --description="..." --services=mysql,redis
 ```
 
 `<name>` is the kebab-case package name; the namespace is derived as
-`EzPhp\<PascalCase>` unless `--namespace=` overrides it (`bignum` → `BigNum`,
-`opcache` → `OPCache`, and `dotenv` → `Env` are existing exceptions the guess
-gets wrong; `websocket-client` → `WebsocketClient`, `websocket-tls` → `WebsocketTls`,
+`EzPhp\<PascalCase>` (each `-`-separated word upper-cased) unless `--namespace=`
+overrides it. Existing exceptions the guess gets wrong: `bignum` → `BigNum`,
+`dataloader` → `DataLoader`, `dotenv` → `Env`, `graphql` → `GraphQL`, `oauth` → `OAuth`,
+`opcache` → `OPCache`, `swagger-ui` → `SwaggerUI`, `webauthn` → `WebAuthn` and
+`websocket` → `WebSocket`; `websocket-client` → `WebsocketClient`, `websocket-tls` → `WebsocketTls`,
 `webauthn-metadata` → `WebauthnMetadata` and `metrics-statsd` → `MetricsStatsd` are
 intentional lower-case-word namespaces, and `testing-application` shares `EzPhp\Testing\`
 with `testing`).
@@ -170,17 +172,21 @@ stub is written only if the submodule doesn't already ship one, so
 `composer guidelines:sync` has a `# Package:` heading to anchor part 1 against.
 
 It writes `modules/<name>/` and registers the module in the four places the monorepo
-needs it — root `composer.json` (`autoload.psr-4`), `phpstan.neon`, `phpunit.xml`
-(test suite **and** coverage source), and `packages.sh` (alphabetical position).
+needs it — root `composer.json` (`autoload.psr-4` **and** the shared
+`autoload-dev` `Tests\` directory list), `phpstan.neon`, `phpunit.xml` (test suite
+**and** coverage source), and `packages.sh` (alphabetical position) — in both
+generated and `--repo` mode.
 
 Two things stay manual on purpose:
 
 - **`CLAUDE.md` part 1** — only the `# Package:` section is generated. Run
   `composer guidelines:sync` afterwards; baking a guidelines copy into the generator
   would recreate the drift the sync script exists to prevent.
-- **The host-port table below** (`--services` only) — editing it marks every
-  `CLAUDE.md` copy as drifted at once, so the next `composer full` would fail for
-  a brand-new module. The generator prints which ports to claim instead.
+- **The host-port table below** (`--services` only) — claim the "next free" row by
+  editing the table in `CODING_GUIDELINES.md` (never in a `CLAUDE.md` copy) and run
+  `composer guidelines:sync` in the same change. Editing it drifts every `CLAUDE.md`
+  until the sync runs, which is why the generator only reminds you instead of doing
+  it. Skipping the edit leaves "next free" stale, so the next module collides.
 
 ### 4 — Docker scaffold
 
@@ -261,7 +267,7 @@ src/
 ├── AbstractRepository.php            — Abstract repository base; persistence (INSERT/UPDATE/DELETE), dirty tracking via DirtyTracker, relations, eager-load
 ├── DirtyTracker.php                  — Snapshot store keyed by entity identity; isTracked()/track()/forget()/dirty(); used by AbstractRepository
 ├── EntityQueryBuilder.php            — Typed query builder for entities; wraps QueryBuilder; eager-load with(), withCount()
-├── EntityServiceProvider.php         — Calls Entity::setDatabase($db) in boot()
+├── EntityServiceProvider.php         — Calls Entity::setDatabase($db) in boot(); registers make:entity / make:repository via CommandRegistryInterface
 ├── Hydrator.php                      — Converts raw DB rows → Entity instances and Entity attributes → storage arrays
 ├── CastableInterface.php             — Interface for custom value-object casts: castFrom(mixed)/castTo(): mixed
 ├── EntityObserverInterface.php       — Lifecycle observer contract: creating/created/updating/updated/deleting/deleted hooks
@@ -271,8 +277,8 @@ src/
 ├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache
 ├── LoggingDatabase.php               — DatabaseInterface decorator logging SQL + bindings + duration via ez-php/logging (soft dependency — require-dev only)
 ├── Console/
-│   ├── MakeEntityCommand.php         — Scaffolds an Entity subclass in src/Entities/
-│   └── MakeRepositoryCommand.php     — Scaffolds an AbstractRepository subclass in src/Repositories/
+│   ├── MakeEntityCommand.php         — Scaffolds an Entity subclass in app/Entities/ (default: <cwd>/app)
+│   └── MakeRepositoryCommand.php     — Scaffolds an AbstractRepository subclass in app/Repositories/ (default: <cwd>/app)
 ├── Relations/
 │   ├── EntityRelation.php            — Abstract base; contracts for getResults/getResult/eagerLoadFor/match/getOwnerKey/getForeignKey/getLocalKey
 │   ├── EntityHasMany.php             — One-to-many: FK on related entity
@@ -290,6 +296,7 @@ src/
 
 tests/
 ├── TestCase.php                      — Base PHPUnit test case
+├── OrmApplicationTestCase.php        — Bootstrapped Application with an in-memory SQLite config/db.php (module-prefixed: the shared `Tests\ApplicationTestCase` name must stay identical across packages)
 ├── DatabaseTestCase.php              — In-memory SQLite DB; fresh per-test method; override setUpDatabase()
 ├── RepositoryTestCase.php            — Extends DatabaseTestCase; wires Entity::setDatabase(); resets in tearDown
 ├── QueryBuilderTest.php              — Covers all QB clauses and execution methods
@@ -613,6 +620,7 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 - **Data Mapper instead of Active Record** — Entities are plain PHP objects with no static query methods and no `save()`. All persistence is in the repository. This separates the domain model from the storage mechanism, makes entities unit-testable without a database, and avoids the global state problems of Active Record base classes.
 - **Repository-side dirty tracking via `SplObjectStorage`** — Storing `$original` inside the entity would couple the entity to its own persistence history, violating the Data Mapper principle. `SplObjectStorage` keyed by entity object identity keeps the snapshot outside the entity and is garbage-collected when the entity goes out of scope.
 - **Per-class database registry** — A plain `protected static $db` would be shared across the entire class hierarchy via PHP's static property inheritance rules. The `array<class-string, Database>` registry keyed by `static::class` (via late-static-binding write) allows different entity types to use different connections without interference.
+- **Scaffolding commands resolve `app/` from the working directory** — Modules have no base-path contract (only the framework's `Application::basePath()`, which this package must not import), so `MakeEntityCommand`/`MakeRepositoryCommand` take an optional `?string $appPath` defaulting to `<cwd>/app`. That default is what lets `EntityServiceProvider` register them by class name through `CommandRegistryInterface` (the container autowires the default); `php ez` always runs from the project root.
 - **`Entity::setDatabase(Entity::class)` as the shared default** — `EntityServiceProvider::boot()` registers the default. `database()` falls back to this after checking the specific subclass key.
 - **`Entity::resetDatabase()` for tests** — Tests must call this (or use `RepositoryTestCase`) in `tearDown`. Omitting it leaks the database connection across test classes.
 - **Dirty tracking compares cast fields normalised** — When a column has an `array`/`json` or `CastableInterface` cast, `normalizeForComparison()` reduces values to a comparable form (JSON string for arrays, `castTo()` for custom types) to avoid false dirty positives after a round-trip.

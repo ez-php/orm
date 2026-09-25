@@ -11,7 +11,7 @@ use EzPhp\Orm\Schema\Schema;
 use EzPhp\Orm\Schema\SchemaServiceProvider;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
-use Tests\ApplicationTestCase;
+use Tests\OrmApplicationTestCase;
 
 /**
  * Class SchemaServiceProviderTest
@@ -22,7 +22,7 @@ use Tests\ApplicationTestCase;
 #[UsesClass(Blueprint::class)]
 #[UsesClass(ColumnDefinition::class)]
 #[UsesClass(Schema::class)]
-final class SchemaServiceProviderTest extends ApplicationTestCase
+final class SchemaServiceProviderTest extends OrmApplicationTestCase
 {
     /**
      * @param Application $app

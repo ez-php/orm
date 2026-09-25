@@ -16,9 +16,12 @@ use EzPhp\Console\CommandInterface;
 final readonly class MakeEntityCommand implements CommandInterface
 {
     /**
-     * @param string $srcPath  Absolute path to the application src/ directory
+     * @param string|null $appPath Absolute path to the application's app/ directory.
+     *                             Null (the default, used when the command is registered
+     *                             by class name) resolves to `<cwd>/app` at run time —
+     *                             `php ez` runs from the project root.
      */
-    public function __construct(private string $srcPath)
+    public function __construct(private ?string $appPath = null)
     {
     }
 
@@ -61,7 +64,7 @@ final readonly class MakeEntityCommand implements CommandInterface
             return 1;
         }
 
-        $dir = $this->srcPath . DIRECTORY_SEPARATOR . 'Entities';
+        $dir = ($this->appPath ?? (getcwd() ?: '.') . DIRECTORY_SEPARATOR . 'app') . DIRECTORY_SEPARATOR . 'Entities';
         $filename = "$name.php";
         $fullPath = $dir . DIRECTORY_SEPARATOR . $filename;
 
@@ -81,7 +84,7 @@ final readonly class MakeEntityCommand implements CommandInterface
             return 1;
         }
 
-        echo "Created: src/Entities/$filename\n";
+        echo "Created: app/Entities/$filename\n";
 
         return 0;
     }

@@ -298,14 +298,25 @@ final class QueryBuilder
     }
 
     /**
+     * Add a HAVING condition (AND-combined).
+     *
+     * `$column` is either a plain column (`total`, `orders.total`) or a single aggregate
+     * over a column or `*`: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, optionally with
+     * `DISTINCT` — e.g. `COUNT(*)`, `SUM(amount)`, `COUNT(DISTINCT user_id)`. Identifiers
+     * are validated and quoted like every other column-taking method; any other
+     * expression throws, so a request-chosen column can never inject SQL.
+     *
      * @param string $column
      * @param mixed  $operatorOrValue
      * @param mixed  $value
+     *
+     * @throws InvalidArgumentException When `$column` is neither a valid identifier nor a supported aggregate.
      *
      * @return self
      */
     public function having(string $column, mixed $operatorOrValue, mixed $value = null): self
     {
+        $column = self::compileHavingColumn($column);
         $clone = clone $this;
 
         static $operators = ['=', '!=', '<>', '<', '>', '<=', '>=', 'like', 'not like'];
@@ -1086,8 +1097,7 @@ final class QueryBuilder
 
         $clauses = [];
         foreach ($this->havings as $having) {
-            $col = $this->quoteIdentifierIfSimple($having['column']);
-            $clauses[] = "{$col} {$having['operator']} ?";
+            $clauses[] = "{$having['column']} {$having['operator']} ?";
         }
 
         return ' HAVING ' . implode(' AND ', $clauses);
@@ -1171,24 +1181,26 @@ final class QueryBuilder
     }
 
     /**
-     * Quote the given name if it is a simple identifier (alphanumeric, underscores, dots, or
-     * the bare wildcard `*`), otherwise return it unchanged as a raw SQL expression.
+     * Validate and quote a HAVING column: a plain identifier, or one aggregate
+     * (`COUNT`/`SUM`/`AVG`/`MIN`/`MAX`, optional `DISTINCT`) over an identifier or `*`.
      *
-     * This is used in contexts like HAVING where both column names (`amount`) and aggregate
-     * expressions (`COUNT(*)`) are valid inputs. A raw expression that contains parentheses,
-     * spaces, or other special characters is passed through without modification.
+     * @param string $column
      *
-     * @param string $name
+     * @throws InvalidArgumentException When the column is anything else.
      *
-     * @return string
+     * @return string The SQL fragment, identifiers quoted.
      */
-    private function quoteIdentifierIfSimple(string $name): string
+    private static function compileHavingColumn(string $column): string
     {
-        if (preg_match('/^[a-zA-Z0-9_.*]+$/', $name)) {
-            return $this->quoteIdentifier($name);
+        $pattern = '/^\s*(COUNT|SUM|AVG|MIN|MAX)\s*\(\s*(DISTINCT\s+)?([A-Za-z0-9_.*]+)\s*\)\s*$/i';
+
+        if (preg_match($pattern, $column, $m) === 1) {
+            $distinct = $m[2] !== '' ? 'DISTINCT ' : '';
+
+            return strtoupper($m[1]) . '(' . $distinct . self::quoteIdentifier($m[3]) . ')';
         }
 
-        return $name;
+        return self::quoteIdentifier($column);
     }
 
     /**

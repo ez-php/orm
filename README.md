@@ -94,6 +94,17 @@ $alice = $repo->findByEmail('alice@example.com');
 $page  = $repo->query()->where('active', true)->paginate(perPage: 15, page: 1);
 ```
 
+Column names are validated and quoted in every clause. `having()` takes a plain column or one
+aggregate over a column or `*` — `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, optionally `DISTINCT`:
+
+```php
+$qb->select('customer_id')->groupBy('customer_id')
+   ->having('COUNT(*)', '>', 5)
+   ->having('SUM(total)', '>=', 1000);
+
+$qb->having('total) OR 1=1 --', 1);   // throws InvalidArgumentException
+```
+
 ### Soft deletes
 
 ```php
@@ -205,6 +216,45 @@ $repo->observe(new AuditObserver());
 
 The `*ing` hooks fire before the DB operation; `*ed` hooks fire after.
 
+### Append-only repositories
+
+For insert-only tables (audit logs, event logs, immutable records) extend `AppendOnlyRepository`
+instead of `AbstractRepository`. `create()` inserts and returns the entity with its generated
+primary key; `save()` and `delete()` throw `LogicException`, so the constraint is enforced by the
+type rather than by convention.
+
+```php
+/** @extends AppendOnlyRepository<LoginEvent> */
+final class LoginEventRepository extends AppendOnlyRepository
+{
+    protected function entityClass(): string
+    {
+        return LoginEvent::class;
+    }
+}
+
+$event = $repository->create(['user_id' => 7, 'ip' => '203.0.113.9']);
+```
+
+### Typed attribute getters
+
+`Entity::getAttribute()` returns `mixed`. Use the `TypedAttributes` trait for typed access that
+satisfies PHPStan level 9 without per-call narrowing:
+
+```php
+final class User extends Entity
+{
+    use TypedAttributes;
+
+    public function age(): int { return $this->getInt('age'); }
+    public function bio(): ?string { return $this->getNullableString('bio'); }
+    public function verifiedAt(): ?DateTimeImmutable { return $this->getNullableDatetime('verified_at'); }
+}
+```
+
+`getInt()`/`getString()` fall back to a default for non-numeric/non-scalar values;
+`getNullableDatetime()` parses `Y-m-d H:i:s` and returns `null` otherwise.
+
 ### Schema builder
 
 ```php
@@ -258,6 +308,8 @@ Both are registered automatically by `EntityServiceProvider::boot()` when the ap
 |---|---|
 | `Entity` | Abstract Data Mapper entity base; attributes, casts, fillable guards, relation storage |
 | `AbstractRepository` | Abstract repository base; INSERT/UPDATE/DELETE, dirty tracking, relations, eager-load |
+| `AppendOnlyRepository` | Repository base for insert-only tables (audit/event logs): `create()` inserts; `save()`/`delete()` throw `LogicException` |
+| `TypedAttributes` | Trait adding `getInt()`/`getString()`/`getBool()`/`getNullableInt()`/`getNullableString()`/`getNullableDatetime()` to an entity |
 | `EntityObserverInterface` | Lifecycle hook contract: `creating/created/updating/updated/deleting/deleted` |
 | `ObservableRepositoryTrait` | Adds observer support to a repository; fires hooks around `save()` and `delete()` |
 | `EntityQueryBuilder` | Typed fluent query builder for entities; `with()`, `withCount()`, `paginate()` |

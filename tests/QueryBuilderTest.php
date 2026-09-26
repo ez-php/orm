@@ -453,6 +453,49 @@ final class QueryBuilderTest extends TestCase
     /**
      * @return void
      */
+    public function test_having_quotes_plain_columns_and_aggregate_arguments(): void
+    {
+        $sql = (new QueryBuilder($this->db, 'users'))
+            ->select('active')
+            ->groupBy('active')
+            ->having('active', 1)
+            ->having('count(DISTINCT name)', '>', 1)
+            ->having('MAX(users.id)', '<', 10)
+            ->toSql();
+
+        $this->assertStringContainsString(
+            'HAVING `active` = ? AND COUNT(DISTINCT `name`) > ? AND MAX(`users`.`id`) < ?',
+            $sql,
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_having_rejects_arbitrary_sql_expressions(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new QueryBuilder($this->db, 'users'))
+            ->groupBy('active')
+            ->having('active) OR 1=1 --', 1);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_having_rejects_unknown_aggregate_functions(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new QueryBuilder($this->db, 'users'))
+            ->groupBy('active')
+            ->having('SLEEP(5)', '>', 0);
+    }
+
+    /**
+     * @return void
+     */
     public function test_group_by_multiple_columns(): void
     {
         $rows = (new QueryBuilder($this->db, 'users'))

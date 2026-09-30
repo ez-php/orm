@@ -25,9 +25,12 @@ final readonly class MakeRepositoryCommand implements CommandInterface
      *                             Null (the default, used when the command is registered
      *                             by class name) resolves to `<cwd>/app` at run time —
      *                             `php ez` runs from the project root.
+     * @param resource|null $errorStream Where error messages go; null = STDERR (injectable for tests).
      */
-    public function __construct(private ?string $appPath = null)
-    {
+    public function __construct(
+        private ?string $appPath = null,
+        private mixed $errorStream = null,
+    ) {
     }
 
     /**
@@ -64,7 +67,7 @@ final readonly class MakeRepositoryCommand implements CommandInterface
         $entityName = $args[0] ?? null;
 
         if ($entityName === null || !preg_match('/^[A-Za-z][A-Za-z0-9]*$/', $entityName)) {
-            fwrite(STDERR, "Usage: ez make:repository <EntityName>\n");
+            fwrite($this->errorStream ?? STDERR, "Usage: ez make:repository <EntityName>\n");
 
             return 1;
         }
@@ -79,13 +82,13 @@ final readonly class MakeRepositoryCommand implements CommandInterface
         }
 
         if (file_exists($fullPath)) {
-            fwrite(STDERR, "Repository already exists: $filename\n");
+            fwrite($this->errorStream ?? STDERR, "Repository already exists: $filename\n");
 
             return 1;
         }
 
         if (file_put_contents($fullPath, $this->stub($entityName, $repoName)) === false) {
-            fwrite(STDERR, "Failed to create repository: $filename\n");
+            fwrite($this->errorStream ?? STDERR, "Failed to create repository: $filename\n");
 
             return 1;
         }

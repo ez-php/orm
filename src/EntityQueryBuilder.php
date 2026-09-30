@@ -71,6 +71,22 @@ final class EntityQueryBuilder
     }
 
     /**
+     * Restrict the SELECT list to raw SQL expressions, emitted verbatim.
+     *
+     * See {@see QueryBuilder::selectRaw()} — never pass user input.
+     *
+     * @param string ...$expressions
+     *
+     * @return self<T>
+     */
+    public function selectRaw(string ...$expressions): self
+    {
+        return clone($this, [
+            'builder' => $this->builder->selectRaw(...$expressions),
+        ]);
+    }
+
+    /**
      * @param string $column
      * @param mixed  $operatorOrValue
      * @param mixed  $value

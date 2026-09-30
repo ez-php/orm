@@ -98,17 +98,44 @@ final class QueryBuilder
     // -------------------------------------------------------------------------
 
     /**
+     * Restrict the SELECT column list.
+     *
+     * Each column is validated and quoted: a plain or qualified identifier
+     * (`name`, `users.name`, `*`, `users.*`) or one aggregate
+     * (`COUNT`/`SUM`/`AVG`/`MIN`/`MAX`, optional `DISTINCT`) over an identifier or `*`,
+     * each optionally followed by `AS alias`. Anything else throws — use
+     * {@see selectRaw()} for other SQL expressions.
+     *
      * @param string ...$columns
+     *
+     * @throws InvalidArgumentException When a column is not an identifier or aggregate.
      *
      * @return self
      */
     public function select(string ...$columns): self
     {
         $clone = clone($this, [
-            'columns' => $columns === [] ? ['*'] : array_values($columns),
+            'columns' => $columns === [] ? ['*'] : array_map(self::compileSelectColumn(...), array_values($columns)),
         ]);
 
         return $clone;
+    }
+
+    /**
+     * Replace the SELECT column list with raw SQL expressions, emitted verbatim.
+     *
+     * The explicit escape hatch for expressions {@see select()} rejects. Never
+     * pass user input here — nothing is quoted or validated.
+     *
+     * @param string ...$expressions
+     *
+     * @return self
+     */
+    public function selectRaw(string ...$expressions): self
+    {
+        return clone($this, [
+            'columns' => $expressions === [] ? ['*'] : array_values($expressions),
+        ]);
     }
 
     // -------------------------------------------------------------------------
@@ -877,11 +904,21 @@ final class QueryBuilder
 
         // Three-arg form with a QueryBuilder subquery
         if ($value instanceof self) {
+            static $subqueryOperators = ['=', '!=', '<>', '<', '>', '<=', '>=', 'IN', 'NOT IN'];
+
+            $operator = is_string($operatorOrValue) ? strtoupper(trim($operatorOrValue)) : null;
+
+            if ($operator === null || !in_array($operator, $subqueryOperators, true)) {
+                throw new InvalidArgumentException(
+                    'Invalid subquery WHERE operator: ' . var_export($operatorOrValue, true) . '. Allowed: ' . implode(', ', $subqueryOperators)
+                );
+            }
+
             $clone->wheres[] = [
                 'type' => 'subquery',
                 'boolean' => $boolean,
                 'column' => $column,
-                'operator' => is_string($operatorOrValue) ? strtoupper($operatorOrValue) : '=',
+                'operator' => $operator,
                 'subquery' => $value,
             ];
 
@@ -1201,6 +1238,25 @@ final class QueryBuilder
         }
 
         return self::quoteIdentifier($column);
+    }
+
+    /**
+     * Validate and quote a SELECT column: an identifier or aggregate accepted by
+     * {@see compileHavingColumn()}, optionally followed by `AS alias`.
+     *
+     * @param string $column
+     *
+     * @throws InvalidArgumentException When the column is anything else.
+     *
+     * @return string The SQL fragment, identifiers quoted.
+     */
+    private static function compileSelectColumn(string $column): string
+    {
+        if (preg_match('/^(.+?)\s+AS\s+([A-Za-z0-9_]+)\s*$/i', $column, $m) === 1) {
+            return self::compileHavingColumn($m[1]) . ' AS ' . self::quoteIdentifier($m[2]);
+        }
+
+        return self::compileHavingColumn($column);
     }
 
     /**

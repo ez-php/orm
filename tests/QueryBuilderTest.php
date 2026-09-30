@@ -716,6 +716,73 @@ final class QueryBuilderTest extends TestCase
         $this->assertSame(2, $count);
     }
 
+    /**
+     * @return void
+     */
+    public function test_where_subquery_accepts_allowlisted_operator(): void
+    {
+        $subQb = (new QueryBuilder($this->db, 'users'))->select('id')->where('score', '>', 15.0);
+        $qb = (new QueryBuilder($this->db, 'users'))->where('id', 'not in', $subQb);
+
+        $this->assertStringContainsString('`id` NOT IN (SELECT', $qb->toSql());
+        $this->assertSame(['Alice'], array_column($qb->get(), 'name'));
+    }
+
+    /**
+     * @return void
+     */
+    public function test_where_subquery_rejects_unknown_operator(): void
+    {
+        $subQb = (new QueryBuilder($this->db, 'users'))->select('id');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid subquery WHERE operator');
+
+        (new QueryBuilder($this->db, 'users'))->where('id', '= 1 OR 1=1 OR id IN', $subQb);
+    }
+
+    // =========================================================================
+    // select() quoting / selectRaw()
+    // =========================================================================
+
+    /**
+     * @return void
+     */
+    public function test_select_quotes_identifiers_aggregates_and_aliases(): void
+    {
+        $sql = (new QueryBuilder($this->db, 'users'))
+            ->select('name', 'users.id', 'users.*', 'COUNT(DISTINCT active) as cnt', 'score AS s')
+            ->toSql();
+
+        $this->assertStringStartsWith(
+            'SELECT `name`, `users`.`id`, `users`.*, COUNT(DISTINCT `active`) AS `cnt`, `score` AS `s` FROM',
+            $sql,
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_select_rejects_expressions(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new QueryBuilder($this->db, 'users'))->select('name, (SELECT password FROM admins) AS x');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_select_raw_emits_expressions_verbatim(): void
+    {
+        $rows = (new QueryBuilder($this->db, 'users'))
+            ->selectRaw('UPPER(name) AS upper_name')
+            ->where('name', 'Alice')
+            ->get();
+
+        $this->assertSame([['upper_name' => 'ALICE']], $rows);
+    }
+
     // =========================================================================
     // Feature 13: whereJsonContains
     // =========================================================================

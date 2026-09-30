@@ -95,8 +95,9 @@ $alice = $repo->findByEmail('alice@example.com');
 $page  = $repo->query()->where('active', true)->paginate(perPage: 15, page: 1);
 ```
 
-Column names are validated and quoted in every clause. `having()` takes a plain column or one
-aggregate over a column or `*` — `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, optionally `DISTINCT`:
+Column names are validated and quoted in every clause. `having()` and `select()` take a plain column or one
+aggregate over a column or `*` — `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, optionally `DISTINCT` (`select()` also
+accepts `AS alias`). For any other SQL expression use `selectRaw()`, which is emitted verbatim — never pass user input to it:
 
 ```php
 $qb->select('customer_id')->groupBy('customer_id')
@@ -104,6 +105,8 @@ $qb->select('customer_id')->groupBy('customer_id')
    ->having('SUM(total)', '>=', 1000);
 
 $qb->having('total) OR 1=1 --', 1);   // throws InvalidArgumentException
+$qb->select('customer_id', 'COUNT(*) AS orders');
+$qb->selectRaw('DATE(created_at) AS day');
 ```
 
 ### Soft deletes

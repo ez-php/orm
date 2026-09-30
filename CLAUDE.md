@@ -487,14 +487,14 @@ Fluent builder for raw SQL. All clause methods return a clone — the original i
 
 | Category | Methods |
 |---|---|
-| Select | `select(string ...$columns)` |
+| Select | `select(string ...$columns)` — each column must be a plain/qualified identifier (`name`, `t.name`, `*`, `t.*`) or a `having()`-style aggregate, optionally with `AS alias`; everything is quoted and anything else throws `InvalidArgumentException`. `selectRaw(string ...$expressions)` is the explicit, unvalidated escape hatch for other SQL expressions — never feed it user input |
 | Where | `where`, `orWhere`, `whereIn`, `whereNotIn`, `whereNull`, `whereNotNull` |
 | Join | `join` (INNER), `leftJoin` |
 | Group | `groupBy`, `having` (plain column or `COUNT`/`SUM`/`AVG`/`MIN`/`MAX`[`DISTINCT`] over a column or `*`; anything else throws `InvalidArgumentException`) |
 | Order | `orderBy` |
 | Pagination | `limit`, `offset` |
 
-**`where(column, operatorOrValue, value = null)`** — two-argument form defaults operator to `=`; three-argument form validates the operator against the allowed list and throws `InvalidArgumentException` on invalid operators.
+**`where(column, operatorOrValue, value = null)`** — two-argument form defaults operator to `=`; three-argument form validates the operator against the allowed list and throws `InvalidArgumentException` on invalid operators. A `QueryBuilder` subquery as the value (`where('id', 'NOT IN', $sub)`) is validated against its own list — `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=`, `IN`, `NOT IN`; the two-argument form `where('id', $sub)` defaults to `IN`.
 
 **OFFSET without LIMIT** — throws `InvalidArgumentException`; always call `limit()` before `offset()`.
 

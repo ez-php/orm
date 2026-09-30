@@ -36,7 +36,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testNameAndDescription(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         self::assertSame('make:entity', $command->getName());
         self::assertNotEmpty($command->getDescription());
@@ -44,7 +44,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testCreatesEntityFile(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $code = $command->handle(['User']);
@@ -56,7 +56,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testCreatesEntitiesDirectoryIfNotExists(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         self::assertDirectoryDoesNotExist($this->srcPath . '/Entities');
 
@@ -69,7 +69,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testGeneratedFileContainsClassName(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $command->handle(['Order']);
@@ -83,7 +83,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testGeneratedFileContainsEntityNamespace(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $command->handle(['Product']);
@@ -97,7 +97,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testPrintsCreatedMessage(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $code = $command->handle(['Invoice']);
@@ -110,7 +110,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testReturns1WithoutNameArgument(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $code = $command->handle([]);
@@ -121,7 +121,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testReturns1ForInvalidClassName(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $code = $command->handle(['123Invalid']);
@@ -132,7 +132,7 @@ final class MakeEntityCommandTest extends TestCase
 
     public function testReturns1IfEntityAlreadyExists(): void
     {
-        $command = new MakeEntityCommand($this->srcPath);
+        $command = new MakeEntityCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $command->handle(['Tag']);
@@ -150,7 +150,7 @@ final class MakeEntityCommandTest extends TestCase
 
         try {
             ob_start();
-            $exit = (new MakeEntityCommand())->handle(['Order']);
+            $exit = (new MakeEntityCommand(errorStream: fopen('php://memory', 'w') ?: null))->handle(['Order']);
             $output = (string) ob_get_clean();
         } finally {
             chdir($cwd);

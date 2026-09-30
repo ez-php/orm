@@ -36,7 +36,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testNameAndDescription(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         self::assertSame('make:repository', $command->getName());
         self::assertNotEmpty($command->getDescription());
@@ -44,7 +44,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testCreatesRepositoryFile(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $code = $command->handle(['User']);
@@ -56,7 +56,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testCreatesRepositoriesDirectoryIfNotExists(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         self::assertDirectoryDoesNotExist($this->srcPath . '/Repositories');
 
@@ -69,7 +69,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testGeneratedFileContainsRepositoryAndEntityNames(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $command->handle(['Order']);
@@ -84,7 +84,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testGeneratedFileContainsEntityClassMethod(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $command->handle(['Product']);
@@ -98,7 +98,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testGeneratedFileContainsNamespacesAndImports(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $command->handle(['Tag']);
@@ -113,7 +113,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testPrintsCreatedMessage(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $code = $command->handle(['Invoice']);
@@ -126,7 +126,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testReturns1WithoutNameArgument(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $code = $command->handle([]);
@@ -137,7 +137,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testReturns1ForInvalidClassName(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $code = $command->handle(['123Invalid']);
@@ -148,7 +148,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testGeneratedClassIsNotFinal(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $command->handle(['Widget']);
@@ -162,7 +162,7 @@ final class MakeRepositoryCommandTest extends TestCase
 
     public function testReturns1IfRepositoryAlreadyExists(): void
     {
-        $command = new MakeRepositoryCommand($this->srcPath);
+        $command = new MakeRepositoryCommand($this->srcPath, errorStream: fopen('php://memory', 'w') ?: null);
 
         ob_start();
         $command->handle(['Category']);

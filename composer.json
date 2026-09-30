@@ -1,6 +1,6 @@
 {
   "name": "ez-php/orm",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "description": "ORM module for the ez-php framework — Active Record style models with a fluent query builder and schema builder",
   "type": "library",
   "license": "MIT",
@@ -24,9 +24,11 @@
   },
   "suggest": {
     "ez-php/logging": "Needed for LoggingDatabase (SQL query logging)",
-    "ez-php/dataloader": "Needed for RelationBatcher (batched lazy relation loading)"
+    "ez-php/dataloader": "Needed for RelationBatcher (batched lazy relation loading)",
+    "ez-php/bignum": "Needed for the 'bigint' and 'decimal[:scale]' attribute casts"
   },
   "require-dev": {
+    "ez-php/bignum": "^2.0",
     "ez-php/dataloader": "^2.0",
     "ez-php/docker": "^2.0",
     "ez-php/testing-application": "^2.0",

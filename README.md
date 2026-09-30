@@ -38,6 +38,7 @@ class User extends Entity
     protected static bool   $timestamps = true;
     protected static array  $fillable   = ['name', 'email'];
     protected static array  $casts      = ['age' => 'int'];
+    // also: 'gold' => 'bigint' (BigInteger), 'price' => 'decimal:2' (BigDecimal) — needs ez-php/bignum
 }
 ```
 

@@ -126,6 +126,12 @@ final class DirtyTracker
             if (is_a($cast, CastableInterface::class, true) && $value instanceof CastableInterface) {
                 return $value->castTo();
             }
+
+            // Compare bignum columns in their canonical storage form, so '1.5' read
+            // back as '1.50' (decimal:2) or an equal BigInteger is not "dirty".
+            if (BigNumCast::handles($cast)) {
+                return BigNumCast::toStorage(BigNumCast::fromStorage($value, $cast), $cast);
+            }
         }
 
         if (is_array($value)) {

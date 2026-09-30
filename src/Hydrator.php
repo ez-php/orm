@@ -45,6 +45,7 @@ final class Hydrator
      * Applies inverse casts before returning:
      * - array/json cast columns are JSON-encoded
      * - CastableInterface columns are serialised via castTo()
+     * - bigint/decimal cast columns holding bignum objects become strings
      *
      * @param Entity $entity
      *
@@ -63,6 +64,8 @@ final class Hydrator
                     $value = $value->castTo();
                 } elseif (in_array($cast, ['array', 'json'], true) && is_array($value)) {
                     $value = json_encode($value);
+                } elseif (BigNumCast::handles($cast)) {
+                    $value = BigNumCast::toStorage($value, $cast);
                 }
             }
 

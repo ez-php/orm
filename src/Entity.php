@@ -443,6 +443,10 @@ abstract class Entity
             return $type::castFrom($value);
         }
 
+        if (BigNumCast::handles($type)) {
+            return BigNumCast::fromStorage($value, $type);
+        }
+
         if (in_array($type, ['int', 'integer'], true)) {
             return is_scalar($value) ? intval($value) : 0;
         }

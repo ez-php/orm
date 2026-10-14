@@ -619,7 +619,9 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 
 **Literal defaults on `TEXT`/`BLOB`/`JSON` are rejected for MySQL.** `compileColumn()` throws `InvalidArgumentException` (naming the column) when a non-null, non-`Expression` default is set on a `TEXT`/`TINYTEXT`/`MEDIUMTEXT`/`LONGTEXT`/`BLOB`/`JSON` column and the driver is not SQLite — MySQL rejects that DDL with error 1101, which otherwise only surfaces when the migration runs in production (this is how `ez-php/auth`'s token migration shipped broken). Use a `VARCHAR`, a nullable column, or `Expression::raw("('value')")` (MySQL 8.0.13+). SQLite accepts literal defaults on `TEXT`, so it is exempt.
 
-**Column modifiers:** `->nullable()`, `->default(value)`, `->unique()`, `->after(col)`, `->first()`, `->change()` (marks for MODIFY COLUMN in MySQL ALTER), `->useCurrent()`, `->useCurrentOnUpdate()`.
+**Column modifiers:** `->nullable()`, `->default(value)`, `->unique()`, `->primary()`, `->after(col)`, `->first()`, `->change()` (marks for MODIFY COLUMN in MySQL ALTER), `->useCurrent()`, `->useCurrentOnUpdate()`.
+
+**Primary keys:** `id()` is the auto-increment shorthand (`INTEGER PRIMARY KEY` on SQLite, `INT UNSIGNED AUTO_INCREMENT PRIMARY KEY` on MySQL). `->primary()` makes any other column the key — it keeps its type, `NOT NULL` and `DEFAULT`, gets no auto-increment, and throws when combined with `nullable()`. `$table->primary(['a', 'b'])` declares a composite key, emitted as a `PRIMARY KEY (…)` table constraint in `CREATE TABLE` and as `ADD PRIMARY KEY (…)` on alter (MySQL only — SQLite cannot add a primary key to an existing table, so it is skipped like `dropPrimary()`). It takes no name: MySQL always calls the key `PRIMARY`. `toCreateSql()` throws when a table ends up with more than one primary key.
 
 **ALTER TABLE operations:**
 
@@ -632,6 +634,7 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 | `dropIndex(name)` / `dropUnique(name)` | `DROP INDEX` | standalone `DROP INDEX` |
 | `dropForeign(name)` | `DROP FOREIGN KEY` | skipped |
 | `dropPrimary()` | `DROP PRIMARY KEY` | skipped |
+| `primary(cols)` | `ADD PRIMARY KEY` (after `dropPrimary()`) | skipped |
 | `dropTimestamps()` | drops `created_at` + `updated_at` | drops `created_at` + `updated_at` |
 | `dropSoftDeletes()` | drops `deleted_at` | drops `deleted_at` |
 | `dropMorphs(name)` | drops both columns + index | drops both columns + `DROP INDEX` |

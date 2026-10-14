@@ -1352,4 +1352,151 @@ final class BlueprintTest extends TestCase
         $this->assertStringStartsWith('CREATE INDEX', $stmts[0]);
         $this->assertStringStartsWith('CREATE UNIQUE INDEX', $stmts[1]);
     }
+
+    // --- Explicit primary keys ---
+
+    /**
+     * @return void
+     */
+    public function test_column_primary_makes_string_column_the_primary_key(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->string('spotify_id', 64)->primary();
+
+        $this->assertSame(
+            'CREATE TABLE `artists` (`spotify_id` VARCHAR(64) NOT NULL PRIMARY KEY)',
+            $bp->toCreateSql('artists'),
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_column_primary_keeps_default_and_check(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->string('code', 3)->default('EUR')->withCheck('length(code) = 3')->primary();
+
+        $this->assertSame(
+            "CREATE TABLE `currencies` (`code` TEXT NOT NULL DEFAULT 'EUR' PRIMARY KEY CHECK (length(code) = 3))",
+            $bp->toCreateSql('currencies'),
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_nullable_primary_column_throws(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->string('code')->nullable()->primary();
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("Primary key column 'code' cannot be nullable");
+
+        $bp->toCreateSql('t');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_composite_primary_key_is_emitted_as_table_constraint(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->string('playlist_id', 64);
+        $bp->unsignedInteger('position');
+        $bp->primary(['playlist_id', 'position']);
+
+        $this->assertSame(
+            'CREATE TABLE `playlist_tracks` (`playlist_id` VARCHAR(64) NOT NULL, `position` INT UNSIGNED NOT NULL, '
+            . 'PRIMARY KEY (`playlist_id`, `position`))',
+            $bp->toCreateSql('playlist_tracks'),
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_primary_accepts_single_column_string(): void
+    {
+        $bp = new Blueprint('sqlite');
+        $bp->string('slug');
+        $bp->primary('slug');
+
+        $this->assertSame(
+            'CREATE TABLE `pages` (`slug` TEXT NOT NULL, PRIMARY KEY (`slug`))',
+            $bp->toCreateSql('pages'),
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function test_primary_key_constraint_precedes_foreign_keys(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->unsignedBigInteger('user_id');
+        $bp->unsignedBigInteger('role_id');
+        $bp->primary(['user_id', 'role_id']);
+        $bp->foreign('user_id')->references('id')->on('users');
+
+        $sql = $bp->toCreateSql('role_user');
+
+        $this->assertStringContainsString('PRIMARY KEY (`user_id`, `role_id`), CONSTRAINT', $sql);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_primary_with_empty_column_list_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $bp = new Blueprint('mysql');
+        $bp->primary([]);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_two_primary_keys_throw(): void
+    {
+        $bp = new Blueprint('mysql');
+        $bp->id();
+        $bp->integer('a');
+        $bp->primary('a');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('more than one primary key');
+
+        $bp->toCreateSql('t');
+    }
+
+    /**
+     * @return void
+     */
+    public function test_alter_adds_primary_key_after_dropping_the_old_one_on_mysql(): void
+    {
+        $bp = new Blueprint('mysql', 'alter');
+        $bp->dropPrimary();
+        $bp->primary(['a', 'b']);
+
+        $stmts = $bp->toAlterSql('t');
+
+        $this->assertSame([
+            'ALTER TABLE `t` DROP PRIMARY KEY',
+            'ALTER TABLE `t` ADD PRIMARY KEY (`a`, `b`)',
+        ], $stmts);
+    }
+
+    /**
+     * @return void
+     */
+    public function test_alter_add_primary_key_is_skipped_on_sqlite(): void
+    {
+        $bp = new Blueprint('sqlite', 'alter');
+        $bp->primary(['a', 'b']);
+
+        $this->assertSame([], $bp->toAlterSql('t'));
+    }
 }

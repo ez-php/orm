@@ -277,6 +277,17 @@ $schema->table('users', function (Blueprint $table) {
     $table->string('phone')->nullable();
 });
 
+// natural and composite primary keys
+$schema->create('artists', function (Blueprint $table) {
+    $table->string('spotify_id', 64)->primary();
+});
+
+$schema->create('playlist_tracks', function (Blueprint $table) {
+    $table->string('playlist_id', 64);
+    $table->unsignedInteger('position');
+    $table->primary(['playlist_id', 'position']);
+});
+
 $schema->drop('old_table');
 ```
 

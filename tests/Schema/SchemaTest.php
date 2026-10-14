@@ -689,4 +689,35 @@ final class SchemaTest extends TestCase
             }
         }
     }
+
+    /**
+     * @return void
+     */
+    public function test_composite_primary_key_rejects_duplicates(): void
+    {
+        $this->schema->create('playlist_tracks', function (Blueprint $t): void {
+            $t->string('playlist_id', 64);
+            $t->integer('position');
+            $t->primary(['playlist_id', 'position']);
+        });
+
+        $this->db->query("INSERT INTO playlist_tracks (playlist_id, position) VALUES ('p1', 1)");
+        $this->db->query("INSERT INTO playlist_tracks (playlist_id, position) VALUES ('p1', 2)");
+
+        $this->expectException(PDOException::class);
+        $this->db->query("INSERT INTO playlist_tracks (playlist_id, position) VALUES ('p1', 1)");
+    }
+
+    /**
+     * @return void
+     */
+    public function test_string_primary_key_rejects_null(): void
+    {
+        $this->schema->create('artists', function (Blueprint $t): void {
+            $t->string('spotify_id', 64)->primary();
+        });
+
+        $this->expectException(PDOException::class);
+        $this->db->query('INSERT INTO artists (spotify_id) VALUES (NULL)');
+    }
 }

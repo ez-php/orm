@@ -15,6 +15,8 @@ final class ColumnDefinition
 
     private bool $unique = false;
 
+    private bool $primary = false;
+
     private mixed $defaultValue = null;
 
     private bool $hasDefault = false;
@@ -59,6 +61,22 @@ final class ColumnDefinition
     public function unique(): self
     {
         $this->unique = true;
+
+        return $this;
+    }
+
+    /**
+     * Make this column the table's primary key (e.g. a natural string key).
+     *
+     * Unlike id(), the column keeps its type, NOT NULL and DEFAULT — no
+     * auto-increment is added. For a key spanning several columns use
+     * Blueprint::primary() instead.
+     *
+     * @return self
+     */
+    public function primary(): self
+    {
+        $this->primary = true;
 
         return $this;
     }
@@ -171,7 +189,7 @@ final class ColumnDefinition
      */
     public function isPrimaryKey(): bool
     {
-        return $this->primaryKey;
+        return $this->primaryKey || $this->primary;
     }
 
     /**

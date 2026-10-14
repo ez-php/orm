@@ -61,6 +61,11 @@ final class Blueprint
     private bool $dropPrimary = false;
 
     /**
+     * @var list<string>|null
+     */
+    private ?array $primaryColumns = null;
+
+    /**
      * @var list<string>
      */
     private array $droppedMorphs = [];
@@ -693,16 +698,55 @@ final class Blueprint
     }
 
     /**
+     * Declare a (possibly composite) primary key as a table constraint.
+     *
+     * Emitted as `PRIMARY KEY (...)` in CREATE TABLE, or as
+     * `ADD PRIMARY KEY (...)` when altering (MySQL only; silently skipped on
+     * SQLite, which cannot add a primary key to an existing table). No name
+     * parameter: MySQL always names the primary key `PRIMARY`.
+     *
+     * @param string|list<string> $columns
+     *
+     * @return void
+     *
+     * @throws InvalidArgumentException When $columns is empty.
+     */
+    public function primary(string|array $columns): void
+    {
+        if (is_string($columns)) {
+            $columns = [$columns];
+        }
+
+        if ($columns === []) {
+            throw new InvalidArgumentException('primary() requires at least one column.');
+        }
+
+        $this->primaryColumns = $columns;
+    }
+
+    /**
      * @param string $table
      *
      * @return string
+     *
+     * @throws InvalidArgumentException When more than one primary key is declared.
      */
     public function toCreateSql(string $table): string
     {
         $parts = [];
+        $primaryKeys = $this->primaryColumns !== null ? 1 : 0;
 
         foreach ($this->columns as $col) {
             $parts[] = $this->compileColumn($col);
+            $primaryKeys += $col->isPrimaryKey() ? 1 : 0;
+        }
+
+        if ($primaryKeys > 1) {
+            throw new InvalidArgumentException("Table '$table' declares more than one primary key.");
+        }
+
+        if ($this->primaryColumns !== null) {
+            $parts[] = 'PRIMARY KEY (' . $this->compileColumnList($this->primaryColumns) . ')';
         }
 
         foreach ($this->foreignKeys as $fk) {
@@ -771,6 +815,11 @@ final class Blueprint
 
             if ($this->dropPrimary) {
                 $statements[] = 'ALTER TABLE ' . $quotedTable . ' DROP PRIMARY KEY';
+            }
+
+            if ($this->primaryColumns !== null) {
+                $statements[] = 'ALTER TABLE ' . $quotedTable
+                    . ' ADD PRIMARY KEY (' . $this->compileColumnList($this->primaryColumns) . ')';
             }
         }
 
@@ -851,6 +900,16 @@ final class Blueprint
     }
 
     /**
+     * @param list<string> $columns
+     *
+     * @return string
+     */
+    private function compileColumnList(array $columns): string
+    {
+        return implode(', ', array_map($this->quoteIdentifier(...), $columns));
+    }
+
+    /**
      * @param ColumnDefinition $col
      *
      * @return ColumnDefinition
@@ -927,8 +986,13 @@ final class Blueprint
     {
         $def = $this->quoteIdentifier($col->name) . ' ' . $col->sqlType;
 
-        if ($col->isPrimaryKey()) {
+        // id(): the auto-increment key keeps its short form (`INTEGER PRIMARY KEY` is SQLite's rowid alias).
+        if ($col->primaryKey) {
             return $def . ' PRIMARY KEY';
+        }
+
+        if ($col->isPrimaryKey() && $col->isNullable()) {
+            throw new InvalidArgumentException("Primary key column '{$col->name}' cannot be nullable.");
         }
 
         $def .= $col->isNullable() ? ' NULL' : ' NOT NULL';
@@ -940,6 +1004,10 @@ final class Blueprint
 
         if ($col->isUnique()) {
             $def .= ' UNIQUE';
+        }
+
+        if ($col->isPrimaryKey()) {
+            $def .= ' PRIMARY KEY';
         }
 
         if ($col->getCheck() !== null) {

@@ -198,7 +198,7 @@ Run from the new module root (requires `"ez-php/docker": "^2.0"` in `require-dev
 vendor/bin/docker-init
 ```
 
-This copies `Dockerfile`, `docker-compose.yml`, `.env.example`, `start.sh`, and `docker/` into the module, replacing `{{MODULE_NAME}}` placeholders. Existing files are never overwritten.
+This copies `Dockerfile`, `docker-compose.yml`, `.env.example`, `start.sh`, and `docker/` into the module, replacing `{{MODULE_NAME}}` placeholders (`docker/db/`, the MySQL init script, only with `--services=mysql`). Existing files are never overwritten.
 
 Pass `--services` to merge MySQL/Redis/Meilisearch/Memcached/Mailpit service definitions directly into `docker-compose.yml` and uncomment the matching sections in `.env.example`, instead of adapting them by hand afterward:
 
@@ -243,7 +243,8 @@ After scaffolding:
 | `ez-php/feature-flags` | — | 6385 (`REDIS_HOST_PORT`) | — |
 | `ez-php/scheduler` | — | 6386 (`REDIS_HOST_PORT`) | — |
 | `ez-php/session` | — | 6387 (`REDIS_HOST_PORT`) | — |
-| **next free** | **3312** | **6388** | **7702** |
+| `ez-php/metrics` | — | 6388 (`REDIS_HOST_PORT`) | — |
+| **next free** | **3312** | **6389** | **7702** |
 
 Only set a port for services the module actually uses. Modules without external services need no port config.
 
@@ -325,6 +326,7 @@ tests/
 ├── Entity/DirtyTrackerTest.php       — Snapshot tracking, dirty() diffs, forget()
 ├── Entity/ObservableRepositoryTraitTest.php — Observer hooks fire in order around save()/delete()
 ├── Entity/TypedAttributesTest.php    — Typed getters: numeric/scalar coercion, defaults, nullable and datetime parsing
+├── Entity/OrmBigNumCastTest.php     — 'bigint'/'decimal[:scale]' casts: BigInteger/BigDecimal on read, string on write, over-scale refusal
 ├── ORM/EntityServiceProviderTest.php — Application-level provider boot test
 ├── Relations/RelationTestCase.php    — Shared schema + repository wiring for the per-relation tests
 ├── Relations/RelationFixtures.php    — Fixture entities/repositories (rel_users, rel_posts, rel_profiles, rel_tags + rel_user_tags pivot)
@@ -677,9 +679,9 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 
 ## Testing Approach
 
-- **`RepositoryTestCase`** — Provides a fresh in-memory SQLite database (`sqlite::memory:`) wired via `Entity::setDatabase()` for every test method. Override `setUpDatabase()` to create tables and seed fixtures. `tearDown` calls `Entity::resetDatabase()`.
+- **`RepositoryTestCase`** — Gives every test method a fresh in-memory SQLite database (`sqlite::memory:`, via the test-local `PdoDatabase`) in `$this->db` and a `Hydrator` in `$this->hydrator`, then calls `setUpDatabase()` — override it to create tables (with `$this->exec()`) and seed fixtures. It does **not** register the connection globally (`Entity::setDatabase()`): pass `$this->db` and `$this->hydrator` to each repository explicitly. A test that does call `Entity::setDatabase()` itself must call `Entity::resetDatabase()` in `tearDown()`.
 - **No MySQL required for most tests** — SQLite covers the full ORM surface. MySQL-specific behaviour (e.g. `INFORMATION_SCHEMA` in `hasTable`) should be noted in test comments.
-- **`QueryBuilder` and `Schema` tests** — Also use SQLite in-memory. `QueryBuilderTest` constructs a `Database` directly; `RepositoryTestCase` is not needed.
+- **`QueryBuilder` and `Schema` tests** — Also use SQLite in-memory. `QueryBuilderTest` constructs a `PdoDatabase` (`sqlite::memory:`) directly; `RepositoryTestCase` is not needed.
 - **Relation eager-load tests** — Set up two related tables in `setUpDatabase()`, seed rows, call `with('relation')` on the repository, and assert the relation is populated on each returned entity.
 - **`CastableInterface` tests** — Use inline anonymous classes. Assert `getAttribute()` returns the cast object and that `save()` stores the correct scalar value.
 - **`#[UsesClass]` required** — PHPUnit is configured with `beStrictAboutCoverageMetadata=true`. Declare indirectly used classes with `#[UsesClass]`.

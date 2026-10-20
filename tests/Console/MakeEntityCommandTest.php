@@ -79,6 +79,7 @@ final class MakeEntityCommandTest extends TestCase
         self::assertIsString($content);
         self::assertStringContainsString('class Order', $content);
         self::assertStringContainsString('extends Entity', $content);
+        self::assertMatchesRegularExpression('#\*/\s*final class Order extends Entity#', $content, 'class docblock missing');
     }
 
     public function testGeneratedFileContainsEntityNamespace(): void

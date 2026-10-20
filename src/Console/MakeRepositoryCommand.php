@@ -117,6 +117,8 @@ final readonly class MakeRepositoryCommand implements CommandInterface
             use EzPhp\\Orm\\AbstractRepository;
 
             /**
+             * Class $repoName
+             *
              * @extends AbstractRepository<$entityName>
              */
             class $repoName extends AbstractRepository

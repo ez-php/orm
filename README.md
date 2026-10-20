@@ -162,8 +162,13 @@ $pending = array_map(fn ($post) => $batcher->belongsTo($postRepo->author($post))
 $authors = array_map(fn ($d) => $d->get(), $pending); // a single users query
 ```
 
-`hasOne()` and `hasMany()` work the same way (`hasMany` resolves to a list, empty when there are none).
-Many-to-many relations are not batched.
+`hasOne()`, `hasMany()` and `belongsToMany()` work the same way (`hasMany`/`belongsToMany` resolve to a
+list, empty when there are none). `belongsToMany()` loads every queued owner through one pivot join:
+
+```php
+$pending = array_map(fn ($user) => $batcher->belongsToMany($userRepo->tags($user)), $users);
+$tags = array_map(fn ($d) => $d->get(), $pending); // one tags ⋈ user_tags query
+```
 
 ### Custom casts
 

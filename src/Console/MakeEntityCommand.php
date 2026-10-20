@@ -108,6 +108,11 @@ final readonly class MakeEntityCommand implements CommandInterface
 
             use EzPhp\\Orm\\Entity;
 
+            /**
+             * Class $name
+             *
+             * @package App\\Entities
+             */
             final class $name extends Entity
             {
                 protected static string \$table = '';

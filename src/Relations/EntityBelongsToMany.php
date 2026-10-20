@@ -79,6 +79,42 @@ final class EntityBelongsToMany extends EntityRelation
     }
 
     /**
+     * The owning entity's key value this lazy relation would load for.
+     *
+     * @internal Used by RelationBatcher; not part of the public relation API.
+     *
+     * @return mixed
+     */
+    public function getLazyKey(): mixed
+    {
+        return $this->localValue;
+    }
+
+    /**
+     * The repository managing the related entity.
+     *
+     * @internal Used by RelationBatcher; not part of the public relation API.
+     *
+     * @return AbstractRepository<TRelated>
+     */
+    public function getRelatedRepository(): AbstractRepository
+    {
+        return $this->relatedRepo;
+    }
+
+    /**
+     * Pivot table and its FK to the related entity — part of RelationBatcher's loader identity.
+     *
+     * @internal Used by RelationBatcher; not part of the public relation API.
+     *
+     * @return string
+     */
+    public function getPivotSignature(): string
+    {
+        return $this->pivotTable . '.' . $this->relatedKey;
+    }
+
+    /**
      * @return string
      */
     public function getOwnerKey(): string

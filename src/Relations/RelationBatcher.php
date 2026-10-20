@@ -16,7 +16,8 @@ use EzPhp\Orm\Entity;
  * set; the N+1 that remains is lazy access — looping over entities and calling
  * `getResult()` / `getResults()` on each one's relation. Passing those relations
  * through a batcher instead returns a `Deferred` per relation; the first `get()`
- * resolves every queued key of the same relation with a single `findWhereIn` query.
+ * resolves every queued key of the same relation with a single `findWhereIn` query
+ * (for belongs-to-many: one pivot join).
  *
  *   $batcher = new RelationBatcher();
  *   $pending = array_map(fn ($post) => $batcher->belongsTo($posts->user($post)), $list);
@@ -137,6 +138,42 @@ final class RelationBatcher
     }
 
     /**
+     * Queue a belongs-to-many relation; resolves to a list of related entities (possibly empty).
+     *
+     * The batch is one pivot join for every queued owner key (the same query
+     * `with()` uses); each related entity carries the `__pivot_fk` attribute of
+     * its pivot row, exactly as after eager loading. No pivot entities.
+     *
+     * @template T of Entity
+     *
+     * @param EntityBelongsToMany<T> $relation
+     *
+     * @return Deferred
+     */
+    public function belongsToMany(EntityBelongsToMany $relation): Deferred
+    {
+        $key = $relation->getLazyKey();
+
+        if (!is_int($key) && !is_string($key)) {
+            return Deferred::resolved([]);
+        }
+
+        return $this->loader('belongsToMany', $relation, static function (array $keys) use ($relation): array {
+            $groups = [];
+
+            foreach ($relation->eagerLoadFor($keys) as $entity) {
+                $value = $entity->getAttribute('__pivot_fk');
+
+                if (is_int($value) || is_string($value)) {
+                    $groups[$value][] = $entity;
+                }
+            }
+
+            return self::fill($keys, $groups, []);
+        })->load($key);
+    }
+
+    /**
      * @param string                                               $kind
      * @param EntityRelation                                       $relation
      * @param callable(list<int|string>): array<int|string, mixed> $batchFn
@@ -146,13 +183,15 @@ final class RelationBatcher
     private function loader(string $kind, EntityRelation $relation, callable $batchFn): DataLoader
     {
         $repository = match (true) {
-            $relation instanceof EntityBelongsTo, $relation instanceof EntityHasOne, $relation instanceof EntityHasMany => $relation->getRelatedRepository(),
+            $relation instanceof EntityBelongsTo, $relation instanceof EntityHasOne, $relation instanceof EntityHasMany,
+            $relation instanceof EntityBelongsToMany => $relation->getRelatedRepository(),
             default => throw new \InvalidArgumentException('Unsupported relation type: ' . $relation::class),
         };
         $id = $kind
             . ':' . spl_object_id($repository)
             . ':' . $relation->getForeignKey()
-            . ':' . $relation->getLocalKey();
+            . ':' . $relation->getLocalKey()
+            . ($relation instanceof EntityBelongsToMany ? ':' . $relation->getPivotSignature() : '');
 
         return $this->loaders[$id] ??= new DataLoader($batchFn);
     }

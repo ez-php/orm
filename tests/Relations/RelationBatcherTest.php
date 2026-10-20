@@ -122,4 +122,61 @@ final class RelationBatcherTest extends RelationTestCase
         self::assertNotNull($again);
         self::assertSame(0, $this->db->queryCount - $before);
     }
+
+    private function seedTags(): void
+    {
+        $this->exec("INSERT INTO rel_users (name) VALUES ('Alice')");
+        $this->exec("INSERT INTO rel_users (name) VALUES ('Bob')");
+        $this->exec("INSERT INTO rel_users (name) VALUES ('Carol')");
+        $this->exec("INSERT INTO rel_tags (name) VALUES ('php')");
+        $this->exec("INSERT INTO rel_tags (name) VALUES ('sql')");
+        $this->exec('INSERT INTO rel_user_tags (user_id, tag_id) VALUES (1, 1)');
+        $this->exec('INSERT INTO rel_user_tags (user_id, tag_id) VALUES (1, 2)');
+        $this->exec('INSERT INTO rel_user_tags (user_id, tag_id) VALUES (2, 2)');
+    }
+
+    public function test_belongs_to_many_across_owners_uses_one_query_and_groups_correctly(): void
+    {
+        $this->seedTags();
+        $users = $this->users->findAll();
+        $batcher = new RelationBatcher();
+
+        $before = $this->db->queryCount;
+        $deferred = array_map(fn ($u) => $batcher->belongsToMany($this->users->tags($u)), $users);
+        $names = array_map(static function ($d): array {
+            /** @var list<Entity> $tags */
+            $tags = $d->get();
+
+            return array_map(static fn (Entity $t): mixed => $t->getAttribute('name'), $tags);
+        }, $deferred);
+
+        self::assertSame([['php', 'sql'], ['sql'], []], $names);
+        self::assertSame(1, $this->db->queryCount - $before);
+    }
+
+    public function test_belongs_to_many_matches_lazy_results(): void
+    {
+        $this->seedTags();
+        $alice = $this->users->find(1);
+        self::assertNotNull($alice);
+
+        /** @var list<Entity> $batched */
+        $batched = (new RelationBatcher())->belongsToMany($this->users->tags($alice))->get();
+        $lazy = $this->users->tags($alice)->getResults();
+
+        self::assertSame(
+            array_map(static fn (Entity $t): mixed => $t->getAttribute('id'), $lazy),
+            array_map(static fn (Entity $t): mixed => $t->getAttribute('id'), $batched),
+        );
+    }
+
+    public function test_belongs_to_many_without_owner_key_resolves_to_empty_list_without_a_query(): void
+    {
+        $user = new RelUserEntity();
+        $batcher = new RelationBatcher();
+
+        $before = $this->db->queryCount;
+        self::assertSame([], $batcher->belongsToMany($this->users->tags($user))->get());
+        self::assertSame(0, $this->db->queryCount - $before);
+    }
 }

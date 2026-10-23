@@ -19,9 +19,9 @@ use Tests\TestCase;
  * @package Tests\Database\Schema
  */
 #[CoversClass(Blueprint::class)]
-#[UsesClass(ColumnDefinition::class)]
+#[CoversClass(ColumnDefinition::class)]
 #[UsesClass(Expression::class)]
-#[UsesClass(ForeignKeyDefinition::class)]
+#[CoversClass(ForeignKeyDefinition::class)]
 final class BlueprintTest extends TestCase
 {
     /**

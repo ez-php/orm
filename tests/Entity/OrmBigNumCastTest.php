@@ -7,6 +7,7 @@ namespace Tests\Entity;
 use EzPhp\BigNum\BigDecimal;
 use EzPhp\BigNum\BigInteger;
 use EzPhp\Contracts\EzPhpException;
+use EzPhp\Orm\BigNumCast;
 use EzPhp\Orm\DirtyTracker;
 use EzPhp\Orm\Entity;
 use EzPhp\Orm\Hydrator;
@@ -33,6 +34,7 @@ final class OrmBigNumCastHero extends Entity
 #[CoversClass(Entity::class)]
 #[CoversClass(Hydrator::class)]
 #[CoversClass(DirtyTracker::class)]
+#[CoversClass(BigNumCast::class)]
 final class OrmBigNumCastTest extends TestCase
 {
     public function test_bigint_reads_ints_and_numeric_strings_as_big_integer(): void

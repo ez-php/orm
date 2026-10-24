@@ -830,7 +830,8 @@ final class QueryBuilder
 
     /**
      * Stream the results row by row, fetching $size rows per query via the same
-     * keyset paging as chunkById(). Only one page is held in memory at a time.
+     * keyset paging as chunkById(). Only one page is held in memory at a time;
+     * keys run on across pages (0, 1, 2, …), so iterator_to_array() keeps every row.
      *
      * @param int    $size   Rows per query (>= 1).
      * @param string $column Unique key column.
@@ -840,8 +841,12 @@ final class QueryBuilder
      */
     public function lazy(int $size = 1000, string $column = 'id'): \Generator
     {
+        // Plain yield, not `yield from`: each page is a list starting at 0, and
+        // re-used keys would make iterator_to_array() drop earlier pages.
         foreach ($this->keysetPages($size, $column) as $rows) {
-            yield from $rows;
+            foreach ($rows as $row) {
+                yield $row;
+            }
         }
     }
 

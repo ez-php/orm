@@ -348,6 +348,7 @@ final class EntityQueryBuilder
 
     /**
      * Stream hydrated entities one by one, $size rows per query (keyset paging).
+     * Plain yield (see QueryBuilder::lazy()): keys run on across pages.
      *
      * @param int    $size
      * @param string $column Unique key column.
@@ -362,13 +363,18 @@ final class EntityQueryBuilder
             $page[] = $row;
 
             if (count($page) === $size) {
-                yield from $this->hydratePage($page);
+                foreach ($this->hydratePage($page) as $entity) {
+                    yield $entity;
+                }
+
                 $page = [];
             }
         }
 
         if ($page !== []) {
-            yield from $this->hydratePage($page);
+            foreach ($this->hydratePage($page) as $entity) {
+                yield $entity;
+            }
         }
     }
 

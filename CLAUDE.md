@@ -319,7 +319,7 @@ tests/
 ├── DuplicateKeyExceptionTest.php     — fromPdo() recognition of MySQL/PG/SQLite duplicate-key errors; save() surfaces it
 ├── PaginatorTest.php                 — Unit tests for Paginator value object (all accessors, edge cases)
 ├── PaginationTest.php                — Integration tests for QB/EQB paginate() and chunk()
-├── KeysetIterationTest.php           — QB/EQB chunkById()/lazy(): key order, stability under deletes, orWhere grouping, soft-delete filter
+├── KeysetIterationTest.php           — QB/EQB chunkById()/lazy(): key order, stability under deletes, orWhere grouping, soft-delete filter, lazy() keys sequential across pages
 ├── Entity/EntityTest.php             — Covers Entity attributes, casts, fillable guards, soft deletes
 ├── Entity/EntityQueryBuilderTest.php — Covers EQB clauses, get/first/count/paginate/with/withCount
 ├── Entity/HydratorTest.php           — Unit tests for Hydrator hydrate() and extract()

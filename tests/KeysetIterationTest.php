@@ -121,6 +121,20 @@ final class KeysetIterationTest extends RepositoryTestCase
         $this->assertSame([[1, 2, 4], [5, 6, 7], [9, 10]], $pages);
     }
 
+    public function testLazyKeysRunOnAcrossPages(): void
+    {
+        $rows = iterator_to_array($this->qb()->lazy(3));
+        $this->assertSame(range(0, 9), array_keys($rows));
+        $this->assertSame(range(1, 10), array_column($rows, 'id'));
+
+        $entities = iterator_to_array($this->items->query()->lazy(3));
+        $this->assertSame(range(0, 7), array_keys($entities));
+        $this->assertSame(
+            [1, 2, 4, 5, 6, 7, 9, 10],
+            array_map(static fn (KeysetItem $item): mixed => $item->getAttribute('id'), $entities),
+        );
+    }
+
     public function testEntityLazyYieldsHydratedEntities(): void
     {
         $names = [];

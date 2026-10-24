@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
+use EzPhp\BigNum\BigDecimal;
+use EzPhp\BigNum\BigInteger;
 use EzPhp\Contracts\DatabaseInterface;
+use EzPhp\Contracts\EzPhpException;
 use EzPhp\Contracts\RepositoryInterface;
 use EzPhp\Orm\Relations\EntityBelongsTo;
 use EzPhp\Orm\Relations\EntityBelongsToMany;
@@ -342,10 +345,14 @@ abstract class AbstractRepository implements RepositoryInterface
      * Issues a direct UPDATE column = column + amount without going through save().
      * The entity's in-memory attribute is updated to reflect the change, and the
      * snapshot is refreshed so a subsequent save() does not overwrite the DB-side increment.
+     * A 'bigint' / 'decimal' cast column stays a BigInteger / BigDecimal in memory.
      *
      * @param T         $entity
      * @param string    $column
      * @param int|float $amount
+     *
+     * @throws EzPhpException When a fractional amount is given for a 'bigint' cast column, or one
+     *                        with more places than a 'decimal:<scale>' cast column holds.
      *
      * @return int Rows affected
      */
@@ -355,17 +362,59 @@ abstract class AbstractRepository implements RepositoryInterface
         $table = $entityClass::resolveTable();
         $pk = $entityClass::scalarPrimaryKey();
         $id = $entity->getAttribute($pk);
+        $current = $entity->getAttribute($column);
+        $next = self::addAmount($current, $amount, $column, $entityClass::getCasts()[$column] ?? null);
 
         $affected = (new QueryBuilder($this->db, $table))
             ->where($pk, $id)
             ->increment($column, $amount);
 
-        $current = $entity->getAttribute($column);
-        $entity->setAttribute($column, is_numeric($current) ? $current + $amount : $amount);
+        $entity->setAttribute($column, $next);
 
         $this->tracker->track($entity);
 
         return $affected;
+    }
+
+    /**
+     * The in-memory value of `$current + $amount` for incrementColumn().
+     *
+     * A 'bigint' / 'decimal' cast column reads as a BigInteger / BigDecimal, which
+     * is_numeric() rejects, so it is added through the bignum object. A fractional
+     * amount on a BigInteger, or a sum with more places than a 'decimal:<scale>'
+     * cast holds, is refused: the database would round it, and the snapshot refresh
+     * would then mark the unrounded in-memory value as clean.
+     *
+     * @param mixed       $current
+     * @param int|float   $amount
+     * @param string      $column
+     * @param string|null $cast   The column's cast type, if any.
+     *
+     * @throws EzPhpException When the database would round the result.
+     *
+     * @return mixed
+     */
+    private static function addAmount(mixed $current, int|float $amount, string $column, ?string $cast): mixed
+    {
+        if ($current instanceof BigInteger) {
+            if (is_float($amount) && floor($amount) !== $amount) {
+                throw new EzPhpException("Cannot increment the 'bigint' column '{$column}' by the fractional amount {$amount}.");
+            }
+
+            return $current->add((int) $amount);
+        }
+
+        if ($current instanceof BigDecimal) {
+            $next = $current->add(BigDecimal::of($amount));
+
+            if (is_string($cast)) {
+                BigNumCast::toStorage($next, $cast); // throws when the scale would not hold it
+            }
+
+            return $next;
+        }
+
+        return is_numeric($current) ? $current + $amount : $amount;
     }
 
     /**

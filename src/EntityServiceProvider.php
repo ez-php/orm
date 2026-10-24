@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
-use EzPhp\Contracts\CommandRegistryInterface;
 use EzPhp\Contracts\DatabaseInterface;
 use EzPhp\Contracts\ServiceProvider;
 use EzPhp\Orm\Console\MakeEntityCommand;
@@ -34,9 +33,7 @@ final class EntityServiceProvider extends ServiceProvider
         $db = $this->app->make(DatabaseInterface::class);
         Entity::setDatabase($db);
 
-        if ($this->app instanceof CommandRegistryInterface) {
-            $this->app->registerCommand(MakeEntityCommand::class);
-            $this->app->registerCommand(MakeRepositoryCommand::class);
-        }
+        $this->registerCommand(MakeEntityCommand::class);
+        $this->registerCommand(MakeRepositoryCommand::class);
     }
 }

@@ -232,7 +232,7 @@ After scaffolding:
 |---|---|---|---|
 | root (`ez-php-project`) | 3306 | 6379 (`REDIS_PORT`) | 7700 |
 | `ez-php/framework` | 3307 | — | — |
-| `ez-php/` (application template) | 3308 | 6383 (`REDIS_PORT`) | — |
+| `ez-php/` (application template) | 3308 | 6383 (`REDIS_PORT`) | 7702 (opt-in service) |
 | `ez-php/orm` | 3309 | — | — |
 | `ez-php/cache` | — | 6380 (`REDIS_HOST_PORT`) | — |
 | `ez-php/queue` | 3310 | 6381 (`REDIS_HOST_PORT`) | — |
@@ -245,7 +245,7 @@ After scaffolding:
 | `ez-php/session` | — | 6387 (`REDIS_HOST_PORT`) | — |
 | `ez-php/metrics` | — | 6388 (`REDIS_HOST_PORT`) | — |
 | `ez-php/event-store-snapshots` | 3312 | — | — |
-| **next free** | **3313** | **6389** | **7702** |
+| **next free** | **3313** | **6389** | **7703** |
 
 Only set a port for services the module actually uses. Modules without external services need no port config.
 
@@ -329,6 +329,7 @@ tests/
 ├── Entity/ObservableRepositoryTraitTest.php — Observer hooks fire in order around save()/delete()
 ├── Entity/TypedAttributesTest.php    — Typed getters: numeric/scalar coercion, defaults, nullable and datetime parsing
 ├── Entity/OrmBigNumCastTest.php     — 'bigint'/'decimal[:scale]' casts: BigInteger/BigDecimal on read, string on write, over-scale refusal
+├── Entity/RepositoryBigNumIncrementTest.php — incrementColumn() keeps bignum-cast columns as BigInteger/BigDecimal in memory; fractional bigint amount and over-scale decimal amount refused
 ├── ORM/EntityServiceProviderTest.php — Application-level provider boot test
 ├── Relations/RelationTestCase.php    — Shared schema + repository wiring for the per-relation tests
 ├── Relations/RelationFixtures.php    — Fixture entities/repositories (rel_users, rel_posts, rel_profiles, rel_tags + rel_user_tags pivot)
@@ -666,7 +667,7 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 - **Keyset iteration wraps the user's WHERE clause** — `chunkById()`/`lazy()` add the cursor as a private `keysetAfter` field that `buildWhere()` renders as `WHERE (<user clauses>) AND column > ?`, so an `orWhere()` cannot bypass it; the page query replaces `orderBy`/`limit`/`offset` and is a clone, so the source builder is unchanged. Rows are read back by the column's last segment (`posts.id` → `id`), which must be selected. No server-side cursors: a page per query keeps memory bounded without holding a statement open across callbacks.
 - **`performUpdate()` sends only dirty columns** — An `UPDATE` with an empty diff is a no-op. This prevents unnecessary DB round-trips and timestamp updates when nothing changed.
 - **Composite PKs supported** — `$primaryKey` can be a `list<string>`. `save()` dispatches to `performInsertComposite`/`performUpdateComposite` accordingly.
-- **`bigint`/`decimal[:scale]` casts use ez-php/bignum as a `suggest`** — PDO returns big integer and DECIMAL columns as int-or-string, so without a cast every entity hand-normalises them. On read the value becomes a `BigInteger`/`BigDecimal` (with a scale, extended to it: `'1.5'` → `1.50`); on write it goes back as a string, and a decimal with more places than the scale throws `EzPhpException` rather than being rounded — a silent rounding of money-like values is worse than a loud error. Dirty tracking compares the canonical string form, so an equal value is not written again. Declaring the cast without bignum installed throws with an install hint; the `require-dev` exists for the tests only. `BigNumCast` is kept out of `CastableInterface` because bignum's classes are final and cannot implement an ORM interface.
+- **`bigint`/`decimal[:scale]` casts use ez-php/bignum as a `suggest`** — PDO returns big integer and DECIMAL columns as int-or-string, so without a cast every entity hand-normalises them. On read the value becomes a `BigInteger`/`BigDecimal` (with a scale, extended to it: `'1.5'` → `1.50`); on write it goes back as a string, and a decimal with more places than the scale throws `EzPhpException` rather than being rounded — a silent rounding of money-like values is worse than a loud error. Dirty tracking compares the canonical string form, so an equal value is not written again. `incrementColumn()` adds through the bignum object in memory (`is_numeric()` rejects it, which used to leave just the amount on the entity) and refuses a fractional amount for a `'bigint'` column, or a sum with more places than a `'decimal:<scale>'` column holds (checked through `BigNumCast::toStorage()`), before the `UPDATE`, since the database would round it while the refreshed snapshot marked the unrounded in-memory value as clean; the amount itself stays `int|float` because it is bound into `column + ?`, where a string would be coerced to a double on MySQL. Declaring the cast without bignum installed throws with an install hint; the `require-dev` exists for the tests only. `BigNumCast` is kept out of `CastableInterface` because bignum's classes are final and cannot implement an ORM interface.
 - **`CastableInterface` for domain value objects** — Custom value objects (e.g. `Money`, `EmailAddress`) implement `castFrom`/`castTo` and are registered in `$casts`. This keeps domain types in the entity without framework coupling.
 - **`QueryBuilder::cache()` integration** — Pass a `CacheInterface` instance and TTL; the next `get()` will read from cache on hit or execute the query and store the result on miss. Cache is keyed by the compiled SQL + bindings.
 - **Blueprint is driver-aware** — The same migration code runs on both SQLite (tests) and MySQL (production). Type normalisation is handled centrally in `Blueprint`.

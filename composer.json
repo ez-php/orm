@@ -18,9 +18,9 @@
   },
   "require": {
     "php": "^8.5",
-    "ez-php/contracts": "^2.0",
-    "ez-php/console": "^2.0",
-    "ez-php/cache": "^2.0"
+    "ez-php/contracts": "^2.6.0",
+    "ez-php/console": "^2.6.0",
+    "ez-php/cache": "^2.6.0"
   },
   "suggest": {
     "ez-php/logging": "Needed for LoggingDatabase (SQL query logging)",
@@ -28,11 +28,11 @@
     "ez-php/bignum": "Needed for the 'bigint' and 'decimal[:scale]' attribute casts"
   },
   "require-dev": {
-    "ez-php/bignum": "^2.0",
-    "ez-php/dataloader": "^2.0",
-    "ez-php/docker": "^2.0",
-    "ez-php/testing-application": "^2.0",
-    "ez-php/logging": "^2.0",
+    "ez-php/bignum": "^2.6.0",
+    "ez-php/dataloader": "^2.6.0",
+    "ez-php/docker": "^2.6.0",
+    "ez-php/testing-application": "^2.6.0",
+    "ez-php/logging": "^2.6.0",
     "phpunit/phpunit": "^13.0",
     "phpstan/phpstan": "^2.1",
     "friendsofphp/php-cs-fixer": "^3.94",

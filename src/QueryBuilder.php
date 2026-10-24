@@ -75,6 +75,15 @@ final class QueryBuilder
      */
     private array $fromBindings = [];
 
+    /**
+     * Keyset cursor of a chunkById()/lazy() page: `column > value`, AND-ed onto the
+     * user's WHERE clause as a whole (which is parenthesised, so an orWhere() cannot
+     * escape the cursor).
+     *
+     * @var array{column: string, value: mixed}|null
+     */
+    private ?array $keysetAfter = null;
+
     private ?CacheInterface $cacheDriver = null;
 
     private int $cacheTtl = 0;
@@ -797,6 +806,85 @@ final class QueryBuilder
     }
 
     /**
+     * Iterate the results in pages of $size ordered by $column, paging with
+     * `WHERE column > last-seen` instead of OFFSET.
+     *
+     * Unlike chunk(), every page costs the same on a large table, and rows the
+     * callback updates or deletes do not shift later pages (no skipped or
+     * repeated rows). $column must be unique, sortable and selected; the query's
+     * own orderBy()/limit()/offset() are replaced, its WHERE clauses are kept.
+     *
+     * @param int                                        $size     Rows per page (>= 1).
+     * @param callable(list<array<string, mixed>>): void $callback
+     * @param string                                     $column   Unique key column (e.g. 'id' or 'posts.id').
+     *
+     * @return void
+     * @throws InvalidArgumentException When $size < 1 or a row lacks $column.
+     */
+    public function chunkById(int $size, callable $callback, string $column = 'id'): void
+    {
+        foreach ($this->keysetPages($size, $column) as $rows) {
+            $callback($rows);
+        }
+    }
+
+    /**
+     * Stream the results row by row, fetching $size rows per query via the same
+     * keyset paging as chunkById(). Only one page is held in memory at a time.
+     *
+     * @param int    $size   Rows per query (>= 1).
+     * @param string $column Unique key column.
+     *
+     * @return \Generator<int, array<string, mixed>>
+     * @throws InvalidArgumentException When $size < 1 or a row lacks $column.
+     */
+    public function lazy(int $size = 1000, string $column = 'id'): \Generator
+    {
+        foreach ($this->keysetPages($size, $column) as $rows) {
+            yield from $rows;
+        }
+    }
+
+    /**
+     * @param int    $size
+     * @param string $column
+     *
+     * @return \Generator<int, list<array<string, mixed>>>
+     */
+    private function keysetPages(int $size, string $column): \Generator
+    {
+        if ($size < 1) {
+            throw new InvalidArgumentException("chunk size must be >= 1, got $size.");
+        }
+
+        $segments = explode('.', $column);
+        $key = end($segments);
+        $page = clone($this, [
+            'orders' => [['column' => $column, 'direction' => 'ASC']],
+            'limitValue' => $size,
+            'offsetValue' => null,
+        ]);
+
+        do {
+            $rows = $page->get();
+
+            if ($rows === []) {
+                return;
+            }
+
+            yield $rows;
+
+            $last = $rows[count($rows) - 1];
+
+            if (!array_key_exists($key, $last)) {
+                throw new InvalidArgumentException("Keyset column '$key' is not part of the selected columns.");
+            }
+
+            $page = clone($page, ['keysetAfter' => ['column' => $column, 'value' => $last[$key]]]);
+        } while (count($rows) === $size);
+    }
+
+    /**
      * Chunk through the query results in pages of the given size.
      *
      * @param int                                        $size
@@ -987,6 +1075,10 @@ final class QueryBuilder
             // 'null' type produces no bindings
         }
 
+        if ($this->keysetAfter !== null) {
+            $bindings[] = $this->keysetAfter['value'];
+        }
+
         return $bindings;
     }
 
@@ -1046,17 +1138,19 @@ final class QueryBuilder
      */
     private function buildWhere(): string
     {
-        if ($this->wheres === []) {
-            return '';
-        }
-
         $parts = [];
         foreach ($this->wheres as $i => $where) {
             $clause = $this->buildWhereClause($where);
             $parts[] = $i === 0 ? $clause : $where['boolean'] . ' ' . $clause;
         }
 
-        return ' WHERE ' . implode(' ', $parts);
+        if ($this->keysetAfter !== null) {
+            $cursor = $this->quoteIdentifier($this->keysetAfter['column']) . ' > ?';
+
+            return $parts === [] ? " WHERE {$cursor}" : ' WHERE (' . implode(' ', $parts) . ") AND {$cursor}";
+        }
+
+        return $parts === [] ? '' : ' WHERE ' . implode(' ', $parts);
     }
 
     /**

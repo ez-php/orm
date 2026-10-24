@@ -95,6 +95,21 @@ $alice = $repo->findByEmail('alice@example.com');
 $page  = $repo->query()->where('active', true)->paginate(perPage: 15, page: 1);
 ```
 
+Large result sets: `chunk()` pages with `LIMIT`/`OFFSET`. `chunkById()` and `lazy()` page by key
+instead (`WHERE id > last ORDER BY id`) — every page costs the same, and rows the callback updates or
+deletes do not make later pages skip or repeat rows. Both keep the query's `where()` clauses and the
+soft-delete filter; the key column (default `id`) must be unique and selected:
+
+```php
+$repo->query()->where('active', true)->chunkById(500, function (array $users): void {
+    foreach ($users as $user) { /* may update or delete $user */ }
+});
+
+foreach ($repo->query()->lazy(1000) as $user) { /* one page in memory at a time */ }
+
+(new QueryBuilder($db, 'orders'))->lazy(1000, 'orders.id'); // raw rows; qualified key column
+```
+
 Column names are validated and quoted in every clause. `having()` and `select()` take a plain column or one
 aggregate over a column or `*` — `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, optionally `DISTINCT` (`select()` also
 accepts `AS alias`). For any other SQL expression use `selectRaw()`, which is emitted verbatim — never pass user input to it:
@@ -130,16 +145,24 @@ $deleted = $repo->onlyTrashed()->get();
 
 ### Relations
 
-Define relation helpers on the repository, then call them on an entity:
+Define relation helpers on the repository, then call them on an entity. Each helper takes the
+related repository *instance*, the key columns and the owning entity's key value:
 
 ```php
-class PostRepository extends AbstractRepository
+final class PostRepository extends AbstractRepository
 {
+    public function __construct(private readonly UserRepository $users, ?DatabaseInterface $db = null)
+    {
+        parent::__construct($db);
+    }
+
     protected function entityClass(): string { return Post::class; }
 
+    /** @return EntityBelongsTo<User> */
     public function author(Post $post): EntityBelongsTo
     {
-        return $this->belongsTo(UserRepository::class, 'user_id', 'id');
+        // FK on the post, PK on the user, the post's FK value
+        return $this->belongsTo($this->users, 'user_id', 'id', $post->getAttribute('user_id'));
     }
 }
 
@@ -332,13 +355,13 @@ Both are registered automatically by `EntityServiceProvider::boot()` when the ap
 | `TypedAttributes` | Trait adding `getInt()`/`getString()`/`getBool()`/`getNullableInt()`/`getNullableString()`/`getNullableDatetime()` to an entity |
 | `EntityObserverInterface` | Lifecycle hook contract: `creating/created/updating/updated/deleting/deleted` |
 | `ObservableRepositoryTrait` | Adds observer support to a repository; fires hooks around `save()` and `delete()` |
-| `EntityQueryBuilder` | Typed fluent query builder for entities; `with()`, `withCount()`, `paginate()` |
+| `EntityQueryBuilder` | Typed fluent query builder for entities; `with()`, `withCount()`, `paginate()`, `chunk()`/`chunkById()`/`lazy()` |
 | `EntityServiceProvider` | Calls `Entity::setDatabase($db)` in `boot()`; registers `make:entity` / `make:repository` |
 | `Hydrator` | Converts raw DB rows → Entity instances and Entity attributes → storage arrays |
 | `CastableInterface` | Interface for custom value-object casts: `castFrom()`/`castTo()` |
 | `DuplicateKeyException` | Thrown on duplicate-key violations by `QueryBuilder::insert()`/`insertBatch()` and therefore by repository `save()` (original `PDOException` is `getPrevious()`) |
 | `Paginator` | Immutable page-of-results value object |
-| `QueryBuilder` | Fluent SQL builder for raw rows; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache |
+| `QueryBuilder` | Fluent SQL builder for raw rows; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/chunkById/lazy/cache |
 | `LoggingDatabase` | `DatabaseInterface` decorator logging SQL + bindings + duration |
 | `EntityHasMany` | One-to-many relation (FK on related entity) |
 | `EntityHasOne` | One-to-one relation (FK on related entity) |

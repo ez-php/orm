@@ -328,6 +328,51 @@ final class EntityQueryBuilder
     }
 
     /**
+     * Keyset-paged iteration (see QueryBuilder::chunkById()): pages of hydrated
+     * entities ordered by $column, stable when the callback modifies rows. The
+     * soft-delete filter and all where() clauses are kept; with() relations and
+     * withCount() are loaded per page.
+     *
+     * @param int                     $size
+     * @param callable(list<T>): void $callback
+     * @param string                  $column Unique key column.
+     *
+     * @return void
+     */
+    public function chunkById(int $size, callable $callback, string $column = 'id'): void
+    {
+        $this->builder->chunkById($size, function (array $rows) use ($callback): void {
+            $callback($this->hydratePage($rows));
+        }, $column);
+    }
+
+    /**
+     * Stream hydrated entities one by one, $size rows per query (keyset paging).
+     *
+     * @param int    $size
+     * @param string $column Unique key column.
+     *
+     * @return \Generator<int, T>
+     */
+    public function lazy(int $size = 1000, string $column = 'id'): \Generator
+    {
+        $page = [];
+
+        foreach ($this->builder->lazy($size, $column) as $row) {
+            $page[] = $row;
+
+            if (count($page) === $size) {
+                yield from $this->hydratePage($page);
+                $page = [];
+            }
+        }
+
+        if ($page !== []) {
+            yield from $this->hydratePage($page);
+        }
+    }
+
+    /**
      * Chunk through the results in pages of the given size.
      *
      * @param int                          $size
@@ -396,6 +441,28 @@ final class EntityQueryBuilder
         }
 
         return clone($this, ['builder' => $result]);
+    }
+
+    /**
+     * Hydrate one page and load its with()/withCount() relations, as get() does.
+     *
+     * @param list<array<string, mixed>> $rows
+     *
+     * @return list<T>
+     */
+    private function hydratePage(array $rows): array
+    {
+        $entities = array_map($this->hydrate(...), $rows);
+
+        if ($this->eagerLoad !== [] && $entities !== []) {
+            $this->loadEagerRelations($entities);
+        }
+
+        if ($this->withCounts !== [] && $entities !== []) {
+            $this->loadCounts($entities);
+        }
+
+        return $entities;
     }
 
     /**

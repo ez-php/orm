@@ -287,7 +287,7 @@ src/
 ├── ObservableRepositoryTrait.php     — Mixin for AbstractRepository subclasses; registers observers and fires lifecycle hooks around save/delete
 ├── DuplicateKeyException.php         — Thrown by `QueryBuilder::insert()`/`insertBatch()` (so every repository `save()` INSERT) on duplicate-key violations; `fromPdo()` recognises MySQL 1062, PG 23505, SQLite UNIQUE/PRIMARY KEY
 ├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem/isFirstPage/isLastPage/from/to
-├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/cache
+├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/chunkById/lazy/cache
 ├── LoggingDatabase.php               — DatabaseInterface decorator logging SQL + bindings + duration via ez-php/logging (soft dependency — require-dev only)
 ├── Console/
 │   ├── MakeEntityCommand.php         — Scaffolds an Entity subclass in app/Entities/ (default: <cwd>/app)
@@ -319,6 +319,7 @@ tests/
 ├── DuplicateKeyExceptionTest.php     — fromPdo() recognition of MySQL/PG/SQLite duplicate-key errors; save() surfaces it
 ├── PaginatorTest.php                 — Unit tests for Paginator value object (all accessors, edge cases)
 ├── PaginationTest.php                — Integration tests for QB/EQB paginate() and chunk()
+├── KeysetIterationTest.php           — QB/EQB chunkById()/lazy(): key order, stability under deletes, orWhere grouping, soft-delete filter
 ├── Entity/EntityTest.php             — Covers Entity attributes, casts, fillable guards, soft deletes
 ├── Entity/EntityQueryBuilderTest.php — Covers EQB clauses, get/first/count/paginate/with/withCount
 ├── Entity/HydratorTest.php           — Unit tests for Hydrator hydrate() and extract()
@@ -418,7 +419,7 @@ Both dependencies are optional — `$db` falls back to `Entity::database()`, `$h
 | `countBy(col, ids)` | `array<mixed, int>` | Returns id → count map (used for `withCount`) |
 | `query()` | `EntityQueryBuilder<T>` | Fluent builder with soft-delete filter |
 
-**Dirty tracking (repository-side)** — `SplObjectStorage<Entity, array<string, mixed>>` stores an attribute snapshot at load time (`hydrateTracked()`). `getDirty()` diffs current attributes against the snapshot; only changed columns are included in `UPDATE`.
+**Dirty tracking (repository-side)** — each repository owns a `DirtyTracker`. `hydrateTracked()` calls `DirtyTracker::track()` to store an attribute snapshot at load time (an `SplObjectStorage<Entity, array<string, mixed>>` keyed by entity identity); `DirtyTracker::dirty()` diffs current attributes against the snapshot (cast fields via `normalizeForComparison()`), and only those columns are included in `UPDATE`; `forget()` drops the snapshot on delete.
 
 **Composite primary keys** — `$primaryKey` may be a `list<string>`. `isPrimaryKeyComposite()` checks; `performInsertComposite()` and `performUpdateComposite()` handle the multi-column case.
 
@@ -426,10 +427,12 @@ Both dependencies are optional — `$db` falls back to `Entity::database()`, `$h
 
 | Method | Returns |
 |---|---|
-| `hasMany(relRepo, fk, localKey)` | `EntityHasMany` |
-| `hasOne(relRepo, fk, localKey)` | `EntityHasOne` |
-| `belongsTo(relRepo, fk, ownerKey)` | `EntityBelongsTo` |
-| `belongsToMany(relRepo, pivotTable, fk, relatedFk, localKey)` | `EntityBelongsToMany` |
+| `hasMany(relRepo, foreignKey, localKey, ownerValue)` | `EntityHasMany` |
+| `hasOne(relRepo, foreignKey, localKey, ownerValue)` | `EntityHasOne` |
+| `belongsTo(relRepo, foreignKey, localKey, fkValue)` | `EntityBelongsTo` |
+| `belongsToMany(relRepo, relatedTable, pivotTable, foreignKey, relatedKey, localKey, relatedLocalKey, localValue)` | `EntityBelongsToMany` |
+
+`relRepo` is the related repository *instance*; the last argument is the owning entity's key value (its PK for `hasMany`/`hasOne`/`belongsToMany`, its FK for `belongsTo`).
 
 ---
 
@@ -448,6 +451,8 @@ Both dependencies are optional — `$db` falls back to `Entity::database()`, `$h
 | `count()` | `int` |
 | `paginate(perPage, page)` | `Paginator<T>` |
 | `chunk(size, callback)` | `void` |
+| `chunkById(size, callback, column = 'id')` | `void` — keyset pages of hydrated entities; with()/withCount() loaded per page |
+| `lazy(size = 1000, column = 'id')` | `Generator<T>` — streams entities, one keyset page per query |
 
 **Eager loading** — `with(...relations)` queues relation names. `get()` calls `$repository->$relation($firstEntity)` to obtain an `EntityRelation`, batch-loads via `eagerLoadFor(ids)`, then calls `match()` to assign results. N+1 avoided; one extra query per eager-loaded relation.
 
@@ -516,7 +521,9 @@ Fluent builder for raw SQL. All clause methods return a clone — the original i
 | `update(array)` | `int` (rows affected) |
 | `delete()` | `int` (rows affected) |
 | `paginate(perPage, page)` | `Paginator<array<string, mixed>>` |
-| `chunk(size, callback)` | `void` — iterates chunks until exhausted |
+| `chunk(size, callback)` | `void` — iterates chunks until exhausted (`LIMIT`/`OFFSET`) |
+| `chunkById(size, callback, column = 'id')` | `void` — keyset pages (`WHERE column > last ORDER BY column`) |
+| `lazy(size = 1000, column = 'id')` | `Generator<array<string, mixed>>` — row stream over the same keyset pages |
 | `cache(ttl, CacheInterface)` | `self` — next `get()` will read from/write to cache |
 
 ---
@@ -650,12 +657,13 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 ## Design Decisions and Constraints
 
 - **Data Mapper instead of Active Record** — Entities are plain PHP objects with no static query methods and no `save()`. All persistence is in the repository. This separates the domain model from the storage mechanism, makes entities unit-testable without a database, and avoids the global state problems of Active Record base classes.
-- **Repository-side dirty tracking via `SplObjectStorage`** — Storing `$original` inside the entity would couple the entity to its own persistence history, violating the Data Mapper principle. `SplObjectStorage` keyed by entity object identity keeps the snapshot outside the entity and is garbage-collected when the entity goes out of scope.
+- **Repository-side dirty tracking via `SplObjectStorage`** — Storing `$original` inside the entity would couple the entity to its own persistence history, violating the Data Mapper principle. `DirtyTracker` (one per repository) keeps the snapshots in an `SplObjectStorage` keyed by entity object identity, outside the entity; `forget()` releases a snapshot once the entity is deleted.
 - **Per-class database registry** — A plain `protected static $db` would be shared across the entire class hierarchy via PHP's static property inheritance rules. The `array<class-string, Database>` registry keyed by `static::class` (via late-static-binding write) allows different entity types to use different connections without interference.
 - **Scaffolding commands resolve `app/` from the working directory** — Modules have no base-path contract (only the framework's `Application::basePath()`, which this package must not import), so `MakeEntityCommand`/`MakeRepositoryCommand` take an optional `?string $appPath` defaulting to `<cwd>/app`. That default is what lets `EntityServiceProvider` register them by class name through `CommandRegistryInterface` (the container autowires the default); `php ez` always runs from the project root.
 - **`Entity::setDatabase(Entity::class)` as the shared default** — `EntityServiceProvider::boot()` registers the default. `database()` falls back to this after checking the specific subclass key.
 - **`Entity::resetDatabase()` for tests** — Tests must call this (or use `RepositoryTestCase`) in `tearDown`. Omitting it leaks the database connection across test classes.
 - **Dirty tracking compares cast fields normalised** — When a column has an `array`/`json` or `CastableInterface` cast, `normalizeForComparison()` reduces values to a comparable form (JSON string for arrays, `castTo()` for custom types) to avoid false dirty positives after a round-trip.
+- **Keyset iteration wraps the user's WHERE clause** — `chunkById()`/`lazy()` add the cursor as a private `keysetAfter` field that `buildWhere()` renders as `WHERE (<user clauses>) AND column > ?`, so an `orWhere()` cannot bypass it; the page query replaces `orderBy`/`limit`/`offset` and is a clone, so the source builder is unchanged. Rows are read back by the column's last segment (`posts.id` → `id`), which must be selected. No server-side cursors: a page per query keeps memory bounded without holding a statement open across callbacks.
 - **`performUpdate()` sends only dirty columns** — An `UPDATE` with an empty diff is a no-op. This prevents unnecessary DB round-trips and timestamp updates when nothing changed.
 - **Composite PKs supported** — `$primaryKey` can be a `list<string>`. `save()` dispatches to `performInsertComposite`/`performUpdateComposite` accordingly.
 - **`bigint`/`decimal[:scale]` casts use ez-php/bignum as a `suggest`** — PDO returns big integer and DECIMAL columns as int-or-string, so without a cast every entity hand-normalises them. On read the value becomes a `BigInteger`/`BigDecimal` (with a scale, extended to it: `'1.5'` → `1.50`); on write it goes back as a string, and a decimal with more places than the scale throws `EzPhpException` rather than being rounded — a silent rounding of money-like values is worse than a loud error. Dirty tracking compares the canonical string form, so an equal value is not written again. Declaring the cast without bignum installed throws with an install hint; the `require-dev` exists for the tests only. `BigNumCast` is kept out of `CastableInterface` because bignum's classes are final and cannot implement an ORM interface.

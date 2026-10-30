@@ -130,6 +130,19 @@ foreach ($repo->query()->lazy(1000) as $user) { /* one page in memory at a time 
 (new QueryBuilder($db, 'orders'))->lazy(1000, 'orders.id'); // raw rows; qualified key column
 ```
 
+For APIs over large tables, `cursorPaginate()` returns one page and an opaque cursor for the next, using the
+same keyset paging. Each page costs the same, and rows inserted or deleted between requests do not shift
+later pages. Ascending by the key only, and there is no total. A malformed cursor throws
+`InvalidArgumentException`, so answer it with a 400:
+
+```php
+$page = $repo->query()->where('active', true)->cursorPaginate(perPage: 50, cursor: $request->query('cursor'));
+
+$page->items();      // list of entities
+$page->nextCursor(); // pass to the next request; null on the last page
+$page->hasMore();
+```
+
 Column names are validated and quoted in every clause. `having()` and `select()` take a plain column or one
 aggregate over a column or `*` — `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, optionally `DISTINCT` (`select()` also
 accepts `AS alias`). For any other SQL expression use `selectRaw()`, which is emitted verbatim — never pass user input to it:

@@ -287,6 +287,7 @@ src/
 ├── ObservableRepositoryTrait.php     — Mixin for AbstractRepository subclasses; registers observers and fires lifecycle hooks around save/delete
 ├── DuplicateKeyException.php         — Thrown by `QueryBuilder::insert()`/`insertBatch()` (so every repository `save()` INSERT) on duplicate-key violations; `fromPdo()` recognises MySQL 1062, PG 23505, SQLite UNIQUE/PRIMARY KEY
 ├── Paginator.php                     — Immutable value object wrapping a page of results with total/lastPage/hasMorePages/firstItem/lastItem/isFirstPage/isLastPage/from/to
+├── CursorPaginator.php               — Immutable page + opaque next cursor from cursorPaginate(); encodes/decodes the cursor
 ├── QueryBuilder.php                  — Fluent SQL builder for raw row queries; all WHERE/JOIN/ORDER/LIMIT/aggregates/paginate/chunk/chunkById/lazy/cache
 ├── LoggingDatabase.php               — DatabaseInterface decorator logging SQL + bindings + duration via ez-php/logging (soft dependency — require-dev only)
 ├── Console/
@@ -320,6 +321,7 @@ tests/
 ├── DuplicateKeyExceptionTest.php     — fromPdo() recognition of MySQL/PG/SQLite duplicate-key errors; save() surfaces it
 ├── PaginatorTest.php                 — Unit tests for Paginator value object (all accessors, edge cases)
 ├── PaginationTest.php                — Integration tests for QB/EQB paginate() and chunk()
+├── CursorPaginationTest.php          — QB/EQB cursorPaginate(): full walk, last page, stability under deletes, malformed cursors, soft deletes
 ├── KeysetIterationTest.php           — QB/EQB chunkById()/lazy(): key order, stability under deletes, orWhere grouping, soft-delete filter, lazy() keys sequential across pages
 ├── Entity/EntityTest.php             — Covers Entity attributes, casts, fillable guards, soft deletes
 ├── Entity/EntityQueryBuilderTest.php — Covers EQB clauses, get/first/count/paginate/with/withCount

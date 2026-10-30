@@ -893,6 +893,56 @@ final class QueryBuilder
     }
 
     /**
+     * One page of an API result, ordered by $column and continued with an opaque
+     * cursor instead of a page number: each page costs the same on a large table,
+     * and rows inserted or deleted between requests do not shift later pages.
+     *
+     * $column must be unique, sortable and selected; the query's own
+     * orderBy()/limit()/offset() are replaced, its WHERE clauses are kept.
+     * Ascending only, and there is no total: a COUNT would cost what this avoids.
+     *
+     * @param int         $perPage Rows per page (>= 1).
+     * @param string|null $cursor  CursorPaginator::nextCursor() of the previous page; null = first page.
+     * @param string      $column  Unique key column (e.g. 'id' or 'posts.id').
+     *
+     * @return CursorPaginator<array<string, mixed>>
+     * @throws InvalidArgumentException When $perPage < 1, the cursor is malformed or issued for
+     *                                  another column, or a row lacks $column.
+     */
+    public function cursorPaginate(int $perPage = 15, ?string $cursor = null, string $column = 'id'): CursorPaginator
+    {
+        if ($perPage < 1) {
+            throw new InvalidArgumentException("perPage must be >= 1, got $perPage.");
+        }
+
+        $page = clone($this, [
+            'orders' => [['column' => $column, 'direction' => 'ASC']],
+            // One row more than the page: tells whether another page exists without a COUNT.
+            'limitValue' => $perPage + 1,
+            'offsetValue' => null,
+            'keysetAfter' => $cursor === null
+                ? $this->keysetAfter
+                : ['column' => $column, 'value' => CursorPaginator::decode($cursor, $column)],
+        ]);
+        $rows = $page->get();
+
+        if (count($rows) <= $perPage) {
+            return new CursorPaginator($rows, $perPage, null);
+        }
+
+        $items = array_slice($rows, 0, $perPage);
+        $segments = explode('.', $column);
+        $key = end($segments);
+        $last = $items[$perPage - 1];
+
+        if (!array_key_exists($key, $last)) {
+            throw new InvalidArgumentException("Keyset column '$key' is not part of the selected columns.");
+        }
+
+        return new CursorPaginator($items, $perPage, CursorPaginator::encode($column, $last[$key]));
+    }
+
+    /**
      * Iterate the results in pages of $size ordered by $column, paging with
      * `WHERE column > last-seen` instead of OFFSET.
      *

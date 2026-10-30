@@ -348,6 +348,24 @@ final class EntityQueryBuilder
     }
 
     /**
+     * One page of hydrated entities continued with an opaque cursor (see
+     * QueryBuilder::cursorPaginate()). The soft-delete filter and all where()
+     * clauses are kept; with() relations and withCount() are loaded for the page.
+     *
+     * @param int         $perPage
+     * @param string|null $cursor
+     * @param string      $column  Unique key column.
+     *
+     * @return CursorPaginator<T>
+     */
+    public function cursorPaginate(int $perPage = 15, ?string $cursor = null, string $column = 'id'): CursorPaginator
+    {
+        $page = $this->builder->cursorPaginate($perPage, $cursor, $column);
+
+        return new CursorPaginator($this->hydratePage($page->items()), $perPage, $page->nextCursor());
+    }
+
+    /**
      * Keyset-paged iteration (see QueryBuilder::chunkById()): pages of hydrated
      * entities ordered by $column, stable when the callback modifies rows. The
      * soft-delete filter and all where() clauses are kept; with() relations and

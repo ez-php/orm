@@ -317,7 +317,7 @@ abstract class AbstractRepository implements RepositoryInterface
         $entityClass = $this->entityClass();
         $table = $entityClass::resolveTable();
 
-        $rows = (new QueryBuilder($this->db, $table))
+        $rows = $this->defaultCriteria(new QueryBuilder($this->db, $table))
             ->select($column, 'COUNT(*) as count')
             ->whereIn($column, $ids)
             ->groupBy($column)
@@ -346,17 +346,19 @@ abstract class AbstractRepository implements RepositoryInterface
      * The entity's in-memory attribute is updated to reflect the change, and the
      * snapshot is refreshed so a subsequent save() does not overwrite the DB-side increment.
      * A 'bigint' / 'decimal' cast column stays a BigInteger / BigDecimal in memory.
+     * The amount may itself be a BigInteger / BigDecimal (ez-php/bignum), so a big
+     * amount never has to be narrowed to a PHP int or float first.
      *
-     * @param T         $entity
-     * @param string    $column
-     * @param int|float $amount
+     * @param T                               $entity
+     * @param string                          $column
+     * @param int|float|BigInteger|BigDecimal $amount
      *
      * @throws EzPhpException When a fractional amount is given for a 'bigint' cast column, or one
      *                        with more places than a 'decimal:<scale>' cast column holds.
      *
      * @return int Rows affected
      */
-    public function incrementColumn(object $entity, string $column, int|float $amount = 1): int
+    public function incrementColumn(object $entity, string $column, int|float|BigInteger|BigDecimal $amount = 1): int
     {
         $entityClass = $this->entityClass();
         $table = $entityClass::resolveTable();
@@ -385,33 +387,53 @@ abstract class AbstractRepository implements RepositoryInterface
      * cast holds, is refused: the database would round it, and the snapshot refresh
      * would then mark the unrounded in-memory value as clean.
      *
-     * @param mixed       $current
-     * @param int|float   $amount
-     * @param string      $column
-     * @param string|null $cast   The column's cast type, if any.
+     * @param mixed                           $current
+     * @param int|float|BigInteger|BigDecimal $amount
+     * @param string                          $column
+     * @param string|null                     $cast    The column's cast type, if any.
      *
      * @throws EzPhpException When the database would round the result.
      *
      * @return mixed
      */
-    private static function addAmount(mixed $current, int|float $amount, string $column, ?string $cast): mixed
+    private static function addAmount(mixed $current, int|float|BigInteger|BigDecimal $amount, string $column, ?string $cast): mixed
     {
         if ($current instanceof BigInteger) {
-            if (is_float($amount) && floor($amount) !== $amount) {
+            if (
+                (is_float($amount) && floor($amount) !== $amount)
+                || ($amount instanceof BigDecimal && !$amount->isEqualTo($amount->toBigInteger()))
+            ) {
                 throw new EzPhpException("Cannot increment the 'bigint' column '{$column}' by the fractional amount {$amount}.");
             }
 
-            return $current->add((int) $amount);
+            return $current->add(match (true) {
+                $amount instanceof BigInteger => $amount,
+                $amount instanceof BigDecimal => $amount->toBigInteger(),
+                default => (int) $amount,
+            });
         }
 
         if ($current instanceof BigDecimal) {
-            $next = $current->add(BigDecimal::of($amount));
+            $next = $current->add(is_int($amount) || is_float($amount) ? BigDecimal::of($amount) : $amount);
 
             if (is_string($cast)) {
                 BigNumCast::toStorage($next, $cast); // throws when the scale would not hold it
             }
 
             return $next;
+        }
+
+        // An uncast column: keep the bignum type of the amount, so a big sum is never narrowed.
+        if ($amount instanceof BigInteger) {
+            return match (true) {
+                is_int($current), is_string($current) && preg_match('/^-?\d+$/', $current) === 1 => $amount->add($current),
+                is_numeric($current) => BigDecimal::of((string) $current)->add($amount),
+                default => $amount,
+            };
+        }
+
+        if ($amount instanceof BigDecimal) {
+            return is_numeric($current) ? $amount->add(is_string($current) ? $current : BigDecimal::of($current)) : $amount;
         }
 
         return is_numeric($current) ? $current + $amount : $amount;
@@ -425,6 +447,55 @@ abstract class AbstractRepository implements RepositoryInterface
     public function query(): EntityQueryBuilder
     {
         return $this->newQueryBuilder();
+    }
+
+    /**
+     * Find an entity by primary key and lock its row until the transaction ends
+     * (`SELECT … FOR UPDATE`; no-op on SQLite). Call it inside
+     * `DatabaseInterface::transaction()`.
+     *
+     * @param int|string $id
+     *
+     * @return T|null
+     */
+    public function findForUpdate(int|string $id): ?object
+    {
+        $pk = $this->entityClass()::scalarPrimaryKey();
+
+        $row = $this->newQueryBuilder()->where($pk, $id)->getQueryBuilder()->lockForUpdate()->first();
+
+        return $row === null ? null : $this->hydrateTracked($row);
+    }
+
+    /**
+     * A query builder without this repository's default criteria (soft-delete
+     * filter still applied) — the explicit escape hatch for e.g. a cross-tenant
+     * admin report.
+     *
+     * @return EntityQueryBuilder<T>
+     */
+    public function withoutDefaultCriteria(): EntityQueryBuilder
+    {
+        return $this->newQueryBuilder(applyDefaultCriteria: false);
+    }
+
+    /**
+     * Constraints every read of this repository starts from (a "global scope"),
+     * e.g. `$query->where('tenant_id', $this->tenants->current()->id)`.
+     *
+     * Applied to find(), findForUpdate(), findAll*(), findBy(), findOneBy(),
+     * findWhereIn() (so eager loading too), countBy() (withCount()) and query();
+     * not to the primary-key UPDATE/DELETE of save()/delete(), which act on an
+     * entity this repository already loaded. Override it in a concrete repository;
+     * the default adds nothing. Bypass with {@see withoutDefaultCriteria()}.
+     *
+     * @param QueryBuilder $query
+     *
+     * @return QueryBuilder
+     */
+    protected function defaultCriteria(QueryBuilder $query): QueryBuilder
+    {
+        return $query;
     }
 
     /**
@@ -608,11 +679,15 @@ abstract class AbstractRepository implements RepositoryInterface
      *
      * @return EntityQueryBuilder<T>
      */
-    private function newQueryBuilder(bool $applySoftDeleteFilter = true): EntityQueryBuilder
+    private function newQueryBuilder(bool $applySoftDeleteFilter = true, bool $applyDefaultCriteria = true): EntityQueryBuilder
     {
         $entityClass = $this->entityClass();
         $table = $entityClass::resolveTable();
         $qb = new QueryBuilder($this->db, $table);
+
+        if ($applyDefaultCriteria) {
+            $qb = $this->defaultCriteria($qb);
+        }
 
         if ($applySoftDeleteFilter && $entityClass::hasSoftDeletes()) {
             $qb = $qb->whereNull('deleted_at');

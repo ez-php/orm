@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace EzPhp\Orm;
 
+use EzPhp\BigNum\BigDecimal;
+use EzPhp\BigNum\BigInteger;
 use EzPhp\Cache\CacheInterface;
 use EzPhp\Contracts\DatabaseInterface;
 use InvalidArgumentException;
@@ -83,6 +85,11 @@ final class QueryBuilder
      * @var array{column: string, value: mixed}|null
      */
     private ?array $keysetAfter = null;
+
+    /**
+     * Row lock appended to the SELECT: 'update' (FOR UPDATE) or 'share' (FOR SHARE).
+     */
+    private ?string $lockMode = null;
 
     private ?CacheInterface $cacheDriver = null;
 
@@ -433,6 +440,37 @@ final class QueryBuilder
     }
 
     // -------------------------------------------------------------------------
+    // Row locks
+    // -------------------------------------------------------------------------
+
+    /**
+     * Lock the selected rows for writing until the transaction ends
+     * (`SELECT … FOR UPDATE`). Call it inside `DatabaseInterface::transaction()`:
+     * outside a transaction the lock is released when the statement finishes.
+     *
+     * No-op on SQLite, which has no row locks and serialises writers through
+     * its database-level lock instead.
+     *
+     * @return self
+     */
+    public function lockForUpdate(): self
+    {
+        return clone($this, ['lockMode' => 'update']);
+    }
+
+    /**
+     * Lock the selected rows against concurrent writes while still letting others
+     * read them (`SELECT … FOR SHARE`, MySQL 8.0+ / PostgreSQL). Same transaction
+     * and SQLite notes as {@see lockForUpdate()}.
+     *
+     * @return self
+     */
+    public function sharedLock(): self
+    {
+        return clone($this, ['lockMode' => 'share']);
+    }
+
+    // -------------------------------------------------------------------------
     // fromSub
     // -------------------------------------------------------------------------
 
@@ -742,16 +780,22 @@ final class QueryBuilder
      *
      * Generates: UPDATE table SET column = column + ? [WHERE ...]
      *
-     * @param string    $column
-     * @param int|float $amount
+     * A `BigInteger` (which must fit a BIGINT column) or `BigDecimal` amount is bound
+     * as its exact string and cast to SIGNED / DECIMAL outside SQLite, so the sum is
+     * not computed as a double (ez-php/bignum, a suggest).
+     *
+     * @param string                          $column
+     * @param int|float|BigInteger|BigDecimal $amount
      *
      * @return int Rows affected
+     * @throws InvalidArgumentException When a BigInteger does not fit a 64-bit int, or a BigDecimal has more than 30 places.
      */
-    public function increment(string $column, int|float $amount = 1): int
+    public function increment(string $column, int|float|BigInteger|BigDecimal $amount = 1): int
     {
+        [$placeholder, $binding] = $this->amountBinding($amount);
         $col = $this->quoteIdentifier($column);
-        $sql = 'UPDATE ' . $this->table . ' SET ' . $col . ' = ' . $col . ' + ?' . $this->buildWhere();
-        $bindings = array_merge([$amount], $this->collectWhereBindings());
+        $sql = 'UPDATE ' . $this->table . ' SET ' . $col . ' = ' . $col . ' + ' . $placeholder . $this->buildWhere();
+        $bindings = array_merge([$binding], $this->collectWhereBindings());
 
         $stmt = $this->db->getPdo()->prepare($sql);
         $stmt->execute($bindings);
@@ -764,21 +808,64 @@ final class QueryBuilder
      *
      * Generates: UPDATE table SET column = column - ? [WHERE ...]
      *
-     * @param string    $column
-     * @param int|float $amount
+     * Bignum amounts are bound as in {@see increment()}.
+     *
+     * @param string                          $column
+     * @param int|float|BigInteger|BigDecimal $amount
      *
      * @return int Rows affected
+     * @throws InvalidArgumentException When a BigInteger does not fit a 64-bit int, or a BigDecimal has more than 30 places.
      */
-    public function decrement(string $column, int|float $amount = 1): int
+    public function decrement(string $column, int|float|BigInteger|BigDecimal $amount = 1): int
     {
+        [$placeholder, $binding] = $this->amountBinding($amount);
         $col = $this->quoteIdentifier($column);
-        $sql = 'UPDATE ' . $this->table . ' SET ' . $col . ' = ' . $col . ' - ?' . $this->buildWhere();
-        $bindings = array_merge([$amount], $this->collectWhereBindings());
+        $sql = 'UPDATE ' . $this->table . ' SET ' . $col . ' = ' . $col . ' - ' . $placeholder . $this->buildWhere();
+        $bindings = array_merge([$binding], $this->collectWhereBindings());
 
         $stmt = $this->db->getPdo()->prepare($sql);
         $stmt->execute($bindings);
 
         return $stmt->rowCount();
+    }
+
+    /**
+     * The placeholder and bound value for an increment/decrement amount.
+     *
+     * A string bound into `column + ?` is coerced to a double by MySQL, which would
+     * round a large value; the cast keeps the arithmetic exact. SQLite needs no cast
+     * (its numeric affinity converts the string, exactly for integers).
+     *
+     * @param int|float|BigInteger|BigDecimal $amount
+     *
+     * @return array{0: string, 1: int|float|string}
+     * @throws InvalidArgumentException When the amount cannot be bound exactly.
+     */
+    private function amountBinding(int|float|BigInteger|BigDecimal $amount): array
+    {
+        if ($amount instanceof BigInteger) {
+            try {
+                $amount->toInt(); // range check: a BIGINT column cannot hold more
+            } catch (\OverflowException) {
+                throw new InvalidArgumentException("The amount {$amount} does not fit a 64-bit integer column.");
+            }
+
+            // With emulated prepares PDO quotes even an int binding, and MySQL would add
+            // the quoted value as a double — exact only up to 2^53.
+            return [$this->driver === 'sqlite' ? '?' : 'CAST(? AS SIGNED)', $amount->toString()];
+        }
+
+        if ($amount instanceof BigDecimal) {
+            $scale = $amount->getScale();
+
+            if ($scale > 30) {
+                throw new InvalidArgumentException("The amount {$amount} has {$scale} decimal places; at most 30 are supported.");
+            }
+
+            return [$this->driver === 'sqlite' ? '?' : 'CAST(? AS DECIMAL(65, ' . $scale . '))', $amount->toString()];
+        }
+
+        return ['?', $amount];
     }
 
     /**
@@ -1115,7 +1202,20 @@ final class QueryBuilder
             . $this->buildGroupBy()
             . $this->buildHaving()
             . $this->buildOrder()
-            . $this->buildLimit();
+            . $this->buildLimit()
+            . $this->buildLock();
+    }
+
+    /**
+     * @return string
+     */
+    private function buildLock(): string
+    {
+        if ($this->lockMode === null || $this->driver === 'sqlite') {
+            return '';
+        }
+
+        return $this->lockMode === 'update' ? ' FOR UPDATE' : ' FOR SHARE';
     }
 
     /**

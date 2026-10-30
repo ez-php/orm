@@ -191,6 +191,26 @@ final class EntityQueryBuilder
     }
 
     /**
+     * Lock the selected rows until the transaction ends (QueryBuilder::lockForUpdate()).
+     *
+     * @return self<T>
+     */
+    public function lockForUpdate(): self
+    {
+        return clone($this, ['builder' => $this->builder->lockForUpdate()]);
+    }
+
+    /**
+     * Shared row lock until the transaction ends (QueryBuilder::sharedLock()).
+     *
+     * @return self<T>
+     */
+    public function sharedLock(): self
+    {
+        return clone($this, ['builder' => $this->builder->sharedLock()]);
+    }
+
+    /**
      * @param int $offset
      *
      * @return self<T>

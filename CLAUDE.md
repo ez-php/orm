@@ -151,7 +151,7 @@ php make_module.php <name> --description="..." --services=mysql,redis --extensio
 
 `<name>` is the kebab-case package name; the namespace is derived as
 `EzPhp\<PascalCase>` (each `-`-separated word upper-cased) unless `--namespace=`
-overrides it. Existing exceptions the guess gets wrong: `asyncapi` → `AsyncApi`,
+overrides it. Existing exceptions the guess gets wrong: `asyncapi` → `AsyncApi`, `asyncapi-ui` → `AsyncApiUi`,
 `bignum` → `BigNum`, `dataloader` → `DataLoader`, `dotenv` → `Env`, `graphql` → `GraphQL`, `graphql-subscriptions` → `GraphQLSubscriptions`, `oauth` → `OAuth`,
 `opcache` → `OPCache`, `openapi` → `OpenApi`, `qrcode` → `QrCode`, `swagger-ui` → `SwaggerUI`, `webauthn` → `WebAuthn` and
 `websocket` → `WebSocket`; `websocket-client` → `WebsocketClient`, `websocket-tls` → `WebsocketTls`,
@@ -315,6 +315,7 @@ tests/
 ├── PdoDatabase.php                   — Minimal DatabaseInterface over raw PDO, so tests don't depend on the framework Database
 ├── QueryBuilderTest.php              — Covers all QB clauses and execution methods
 ├── QueryBuilderCacheTest.php         — Covers QB cache() integration with CacheInterface
+├── QueryBuilderLockAndAmountTest.php — lockForUpdate()/sharedLock() SQL (SQLite no-op, MySQL suffix) and exact bignum increment/decrement (MySQL cases skip without DB_HOST)
 ├── LoggingDatabaseTest.php           — Covers LoggingDatabase: delegation, SQL/bindings/duration logging, custom log level, transaction() passthrough without per-call logging
 ├── DuplicateKeyExceptionTest.php     — fromPdo() recognition of MySQL/PG/SQLite duplicate-key errors; save() surfaces it
 ├── PaginatorTest.php                 — Unit tests for Paginator value object (all accessors, edge cases)
@@ -329,7 +330,8 @@ tests/
 ├── Entity/ObservableRepositoryTraitTest.php — Observer hooks fire in order around save()/delete()
 ├── Entity/TypedAttributesTest.php    — Typed getters: numeric/scalar coercion, defaults, nullable and datetime parsing
 ├── Entity/OrmBigNumCastTest.php     — 'bigint'/'decimal[:scale]' casts: BigInteger/BigDecimal on read, string on write, over-scale refusal
-├── Entity/RepositoryBigNumIncrementTest.php — incrementColumn() keeps bignum-cast columns as BigInteger/BigDecimal in memory; fractional bigint amount and over-scale decimal amount refused
+├── Entity/RepositoryBigNumIncrementTest.php — incrementColumn() keeps bignum-cast columns as BigInteger/BigDecimal in memory; bignum amounts; fractional bigint amount and over-scale decimal amount refused
+├── Entity/RepositoryDefaultCriteriaTest.php — defaultCriteria() scopes every read path (find/findForUpdate/findAll/findWhereIn/countBy/query); withoutDefaultCriteria(); saves unaffected
 ├── ORM/EntityServiceProviderTest.php — Application-level provider boot test
 ├── Relations/RelationTestCase.php    — Shared schema + repository wiring for the per-relation tests
 ├── Relations/RelationFixtures.php    — Fixture entities/repositories (rel_users, rel_posts, rel_profiles, rel_tags + rel_user_tags pivot)
@@ -418,7 +420,11 @@ Both dependencies are optional — `$db` falls back to `Entity::database()`, `$h
 | `findOneBy(col, val)` | `T\|null` | Returns first match |
 | `findWhereIn(col, vals)` | `list<T>` | Batch lookup |
 | `countBy(col, ids)` | `array<mixed, int>` | Returns id → count map (used for `withCount`) |
+| `findForUpdate(id)` | `T\|null` | `find()` with `FOR UPDATE` — call inside a transaction |
+| `withoutDefaultCriteria()` | `EntityQueryBuilder<T>` | Query builder without `defaultCriteria()` (soft-delete filter kept) |
 | `query()` | `EntityQueryBuilder<T>` | Fluent builder with soft-delete filter |
+
+**Default criteria** — override `protected function defaultCriteria(QueryBuilder $query): QueryBuilder` to scope every read (e.g. `where('tenant_id', …)`); see Design Decisions.
 
 **Dirty tracking (repository-side)** — each repository owns a `DirtyTracker`. `hydrateTracked()` calls `DirtyTracker::track()` to store an attribute snapshot at load time (an `SplObjectStorage<Entity, array<string, mixed>>` keyed by entity identity); `DirtyTracker::dirty()` diffs current attributes against the snapshot (cast fields via `normalizeForComparison()`), and only those columns are included in `UPDATE`; `forget()` drops the snapshot on delete.
 
@@ -441,7 +447,7 @@ Both dependencies are optional — `$db` falls back to `Entity::database()`, `$h
 
 `@template T of Entity`. Typed wrapper over `QueryBuilder` that hydrates rows into entity instances.
 
-**Clause methods** (all return `self<T>`): `select`, `where`, `whereIn`, `whereNotIn`, `whereNull`, `whereNotNull`, `join`, `orderBy`, `limit`, `offset`.
+**Clause methods** (all return `self<T>`): `select`, `where`, `whereIn`, `whereNotIn`, `whereNull`, `whereNotNull`, `join`, `orderBy`, `limit`, `offset`, `lockForUpdate`, `sharedLock`.
 
 **Execution methods:**
 
@@ -502,6 +508,7 @@ Fluent builder for raw SQL. All clause methods return a clone — the original i
 | Group | `groupBy`, `having` (plain column or `COUNT`/`SUM`/`AVG`/`MIN`/`MAX`[`DISTINCT`] over a column or `*`; anything else throws `InvalidArgumentException`) |
 | Order | `orderBy` |
 | Pagination | `limit`, `offset` |
+| Locks | `lockForUpdate()` (`FOR UPDATE`), `sharedLock()` (`FOR SHARE`); no-op on SQLite |
 
 **`where(column, operatorOrValue, value = null)`** — two-argument form defaults operator to `=`; three-argument form validates the operator against the allowed list and throws `InvalidArgumentException` on invalid operators. A `QueryBuilder` subquery as the value (`where('id', 'NOT IN', $sub)`) is validated against its own list — `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=`, `IN`, `NOT IN`; the two-argument form `where('id', $sub)` defaults to `IN`.
 
@@ -521,6 +528,7 @@ Fluent builder for raw SQL. All clause methods return a clone — the original i
 | `insert(array)` | `bool` |
 | `update(array)` | `int` (rows affected) |
 | `delete()` | `int` (rows affected) |
+| `increment(column, amount)` / `decrement(column, amount)` | `int` (rows affected); `amount` is `int\|float\|BigInteger\|BigDecimal` (bignum bound exactly, see Design Decisions) |
 | `paginate(perPage, page)` | `Paginator<array<string, mixed>>` |
 | `chunk(size, callback)` | `void` — iterates chunks until exhausted (`LIMIT`/`OFFSET`) |
 | `chunkById(size, callback, column = 'id')` | `void` — keyset pages (`WHERE column > last ORDER BY column`) |
@@ -667,18 +675,17 @@ $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
 - **Keyset iteration wraps the user's WHERE clause** — `chunkById()`/`lazy()` add the cursor as a private `keysetAfter` field that `buildWhere()` renders as `WHERE (<user clauses>) AND column > ?`, so an `orWhere()` cannot bypass it; the page query replaces `orderBy`/`limit`/`offset` and is a clone, so the source builder is unchanged. Rows are read back by the column's last segment (`posts.id` → `id`), which must be selected. No server-side cursors: a page per query keeps memory bounded without holding a statement open across callbacks.
 - **`performUpdate()` sends only dirty columns** — An `UPDATE` with an empty diff is a no-op. This prevents unnecessary DB round-trips and timestamp updates when nothing changed.
 - **Composite PKs supported** — `$primaryKey` can be a `list<string>`. `save()` dispatches to `performInsertComposite`/`performUpdateComposite` accordingly.
-- **`bigint`/`decimal[:scale]` casts use ez-php/bignum as a `suggest`** — PDO returns big integer and DECIMAL columns as int-or-string, so without a cast every entity hand-normalises them. On read the value becomes a `BigInteger`/`BigDecimal` (with a scale, extended to it: `'1.5'` → `1.50`); on write it goes back as a string, and a decimal with more places than the scale throws `EzPhpException` rather than being rounded — a silent rounding of money-like values is worse than a loud error. Dirty tracking compares the canonical string form, so an equal value is not written again. `incrementColumn()` adds through the bignum object in memory (`is_numeric()` rejects it, which used to leave just the amount on the entity) and refuses a fractional amount for a `'bigint'` column, or a sum with more places than a `'decimal:<scale>'` column holds (checked through `BigNumCast::toStorage()`), before the `UPDATE`, since the database would round it while the refreshed snapshot marked the unrounded in-memory value as clean; the amount itself stays `int|float` because it is bound into `column + ?`, where a string would be coerced to a double on MySQL. Declaring the cast without bignum installed throws with an install hint; the `require-dev` exists for the tests only. `BigNumCast` is kept out of `CastableInterface` because bignum's classes are final and cannot implement an ORM interface.
+- **`bigint`/`decimal[:scale]` casts use ez-php/bignum as a `suggest`** — PDO returns big integer and DECIMAL columns as int-or-string, so without a cast every entity hand-normalises them. On read the value becomes a `BigInteger`/`BigDecimal` (with a scale, extended to it: `'1.5'` → `1.50`); on write it goes back as a string, and a decimal with more places than the scale throws `EzPhpException` rather than being rounded — a silent rounding of money-like values is worse than a loud error. Dirty tracking compares the canonical string form, so an equal value is not written again. `incrementColumn()` adds through the bignum object in memory (`is_numeric()` rejects it, which used to leave just the amount on the entity) and refuses a fractional amount for a `'bigint'` column, or a sum with more places than a `'decimal:<scale>'` column holds (checked through `BigNumCast::toStorage()`), before the `UPDATE`, since the database would round it while the refreshed snapshot marked the unrounded in-memory value as clean; the amount may itself be a `BigInteger`/`BigDecimal`: `QueryBuilder::increment()`/`decrement()` bind it as its exact string and wrap the placeholder in `CAST(? AS SIGNED)` / `CAST(? AS DECIMAL(65, <scale>))` outside SQLite, because MySQL adds a bound string — and, with PDO's emulated prepares, even a bound int — as a double, exact only up to 2^53. A `BigInteger` outside the 64-bit range, or a `BigDecimal` with more than 30 places (MySQL's DECIMAL limit), is refused with `InvalidArgumentException` instead of being rounded. Declaring the cast without bignum installed throws with an install hint; the `require-dev` exists for the tests only. `BigNumCast` is kept out of `CastableInterface` because bignum's classes are final and cannot implement an ORM interface.
 - **`CastableInterface` for domain value objects** — Custom value objects (e.g. `Money`, `EmailAddress`) implement `castFrom`/`castTo` and are registered in `$casts`. This keeps domain types in the entity without framework coupling.
 - **`QueryBuilder::cache()` integration** — Pass a `CacheInterface` instance and TTL; the next `get()` will read from cache on hit or execute the query and store the result on miss. Cache is keyed by the compiled SQL + bindings.
 - **Blueprint is driver-aware** — The same migration code runs on both SQLite (tests) and MySQL (production). Type normalisation is handled centrally in `Blueprint`.
 - **`Expression` for raw SQL defaults** — `ColumnDefinition::default()` accepts any value; when the value is an `Expression` instance, `Blueprint::compileDefault()` emits the raw string verbatim instead of quoting it. This enables `DEFAULT CURRENT_TIMESTAMP`, `DEFAULT (UUID())`, etc. without breaking the type-safe default path for literals.
 - **SQLite 3.25+ required for `RENAME COLUMN`** — `Schema::table()` inspects pending ALTER statements and throws a descriptive `RuntimeException` if the running SQLite version is below 3.25.0. The table-recreation fallback is not implemented because PHP 8.5 targets platforms where 3.25+ is always available.
 - **`Schema::dump()` is SQLite/MySQL only** — The dump logic uses `sqlite_master` or `SHOW CREATE TABLE`. Other drivers are not supported.
+- **Row locks are a clause, not a transaction helper.** `lockForUpdate()`/`sharedLock()` append `FOR UPDATE`/`FOR SHARE` (MySQL 8.0+ syntax, also PostgreSQL) after `LIMIT`; the caller owns the transaction (`DatabaseInterface::transaction()`). They are a no-op on SQLite, which has no row locks — its database-level write lock already serialises writers — so the same repository code runs in SQLite tests. No optimistic locking / version columns.
+- **Default criteria are a protected hook, not a registry.** `defaultCriteria(QueryBuilder)` (identity by default) is applied by every read path of `AbstractRepository` — `newQueryBuilder()` and `countBy()` — so `find()`, `findForUpdate()`, `findAll*()`, `findBy()`, `findOneBy()`, `findWhereIn()` (eager loading) and `withCount()` are scoped alike; `withoutDefaultCriteria()` is the one explicit bypass. It is not applied to the primary-key `UPDATE`/`DELETE` of `save()`/`delete()`: those act on an entity the repository already loaded under the criteria. No auto-registration and no automatic filling of e.g. `tenant_id` on insert — explicit over magic.
 - **`QueryBuilder` uses clone-based withers** — Every clause method clones the builder so intermediate states can be reused without side effects.
 - **`ez-php/logging` is a soft dependency, `require-dev` only.** `LoggingDatabase` implements `DatabaseInterface` and uses `LoggerInterface`, but `composer.json`'s `require` block stays limited to `ez-php/contracts`/`ez-php/console`/`ez-php/cache` — same reasoning as `ez-php/mail`'s `Job\SendMailableJob`: a hard dependency would force `ez-php/logging` on every application that installs `ez-php/orm`, even ones with no query logging. PSR-4 only resolves `LoggingDatabase.php` (and therefore `LoggerInterface`) when something actually references the class.
-
----
-
 - **`with()` was already batched; the remaining N+1 is lazy access, so batching is an opt-in layer, not a rewrite.** `EntityQueryBuilder::with()` issues one `findWhereIn` per relation for the whole result set. What still costs one query per entity is calling `getResult()`/`getResults()` on each entity's lazily-created relation. `RelationBatcher` (built on `ez-php/dataloader`, unchanged) collects those calls and resolves them in one query per relation. Rewriting `with()` onto DataLoader would touch the core path for no query-count gain, so it was deliberately not done; existing relation classes' behaviour is unchanged.
 - **`ez-php/dataloader` is a require-dev-only (soft) dependency.** PSR-4 resolves `RelationBatcher` only when referenced, so the ORM works without dataloader installed (same reasoning as `ez-php/mail`'s `Job\SendMailableJob`).
 - **A `RelationBatcher` is per-unit-of-work, not a singleton.** Its DataLoaders memoize by owner key; a long-lived instance would serve stale rows. Construct one per request/task.

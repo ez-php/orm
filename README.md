@@ -95,6 +95,26 @@ $alice = $repo->findByEmail('alice@example.com');
 $page  = $repo->query()->where('active', true)->paginate(perPage: 15, page: 1);
 ```
 
+Row locks and scoping — `lockForUpdate()`/`sharedLock()` append `FOR UPDATE`/`FOR SHARE` (no-op on
+SQLite); call them inside a transaction. `findForUpdate($id)` is the repository shortcut. Override
+`defaultCriteria()` to scope every read of a repository (e.g. per tenant); `withoutDefaultCriteria()`
+bypasses it explicitly:
+
+```php
+$db->transaction(function () use ($wallets, $id, $amount): void {
+    $wallet = $wallets->findForUpdate($id);              // row locked until commit
+    $wallets->incrementColumn($wallet, 'gold', $amount); // int, float, BigInteger or BigDecimal
+});
+
+final class ProjectRepository extends AbstractRepository
+{
+    protected function defaultCriteria(QueryBuilder $query): QueryBuilder
+    {
+        return $query->where('tenant_id', $this->tenants->current()->id);
+    }
+}
+```
+
 Large result sets: `chunk()` pages with `LIMIT`/`OFFSET`. `chunkById()` and `lazy()` page by key
 instead (`WHERE id > last ORDER BY id`) — every page costs the same, and rows the callback updates or
 deletes do not make later pages skip or repeat rows. Both keep the query's `where()` clauses and the

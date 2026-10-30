@@ -149,4 +149,46 @@ final class RepositoryBigNumIncrementTest extends RepositoryTestCase
         self::assertInstanceOf(BigDecimal::class, $stored);
         self::assertSame('1.50', $stored->toString());
     }
+
+    public function test_bignum_amounts_are_added_without_narrowing(): void
+    {
+        $wallet = $this->wallets->find(1);
+        assert($wallet instanceof BigNumWalletEntity);
+
+        $this->wallets->incrementColumn($wallet, 'gold', BigInteger::of('9000000000000000000'));
+        $this->wallets->incrementColumn($wallet, 'balance', BigDecimal::of('0.25'));
+
+        self::assertSame('9000000000000000100', self::text($wallet->getAttribute('gold')));
+        self::assertSame('1.75', self::text($wallet->getAttribute('balance')));
+
+        $stored = $this->wallets->find(1);
+        assert($stored instanceof BigNumWalletEntity);
+        self::assertSame('9000000000000000100', self::text($stored->getAttribute('gold')));
+        self::assertSame('1.75', self::text($stored->getAttribute('balance')));
+    }
+
+    public function test_a_fractional_big_decimal_is_refused_for_a_bigint_column(): void
+    {
+        $wallet = $this->wallets->find(1);
+        assert($wallet instanceof BigNumWalletEntity);
+
+        $this->expectException(EzPhpException::class);
+
+        $this->wallets->incrementColumn($wallet, 'gold', BigDecimal::of('1.5'));
+    }
+
+    public function test_an_integral_big_decimal_is_accepted_for_a_bigint_column(): void
+    {
+        $wallet = $this->wallets->find(1);
+        assert($wallet instanceof BigNumWalletEntity);
+
+        $this->wallets->incrementColumn($wallet, 'gold', BigDecimal::of('2.00'));
+
+        self::assertSame('102', self::text($wallet->getAttribute('gold')));
+    }
+
+    private static function text(mixed $value): string
+    {
+        return is_scalar($value) || $value instanceof \Stringable ? (string) $value : '';
+    }
 }
